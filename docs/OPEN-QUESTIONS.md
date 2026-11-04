@@ -53,3 +53,27 @@ Stage 5 uses `rusqlite` as planned. `rusqlite/bundled` compiles SQLite from C, w
 (see Q4), so desktop builds link the system `libsqlite3` and the Android build must enable the
 `sqlite-bundled` feature of `wallpaper-core` (there is no system SQLite to link on Android).
 **Recommended:** keep. Nothing to decide unless you want a pure-Rust store (`redb`) instead — then stage 5 is redone.
+
+## Q7. External links need an opener plugin
+
+The details sheet shows the Commons/Unsplash page and renders it as a plain `<a target="_blank">`. In a Tauri
+webview this does nothing without `tauri-plugin-opener`. **Recommended:** add the plugin (and its capability for
+https URLs on the three hosts only) when the Android plugin work starts; until then the URL is selectable text.
+
+## Q8. Unsplash key has no UI yet
+
+The engine supports Unsplash (`Engine::set_unsplash_key`, `Settings::unsplash_enabled`) but the key is held in
+memory only and there is no input field. Stage 7 (Android) will store it in EncryptedSharedPreferences as planned;
+a desktop UI field would need an OS keyring (e.g. `keyring` crate), which pulls in D-Bus/C libraries.
+**Recommended:** Android only for the key; on desktop Unsplash stays off.
+
+## Q9. App identifier
+
+`app.dynamicthemedwallpapers` (in `src-tauri/tauri.conf.json`) is a placeholder reverse-domain id. It becomes the
+Android package name and cannot change after a Play Store release. Pick the final one before the first signed build
+(e.g. one based on a domain or GitHub org you own).
+
+## Q10. TypeScript pinned to 6
+
+`svelte-check` 4.x does not work with TypeScript 7 yet (it asks for a `--tsgo` setup), so `typescript` is pinned to
+`~6` in `package.json`. Revisit when svelte-check supports TS 7 directly.

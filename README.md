@@ -32,16 +32,35 @@ src-tauri     Tauri v2 shell + JNI entry point used by the background worker
 docs          architecture, scoring, sources, privacy, open questions
 ```
 
-## Trying the engine on a desktop
+## Trying it on a desktop
 
-No Android SDK needed:
+No Android SDK needed.
+
+**The engine** (place search, photo selection, scoring):
 
 ```sh
 cargo test --workspace
-cargo run -p wallpaper-core --example pick -- --place "Kyoto" --tone dark --screen 1080x2400
+cargo run -p wallpaper-core --example pick -- --place "Kyoto" --tone dark --screen 1080x2400 --explain
 ```
 
-The example prints the chosen photo, per-feature scores and writes a ready-to-use JPEG into `out/`.
+The example talks to the real Wikidata/Commons APIs, prints every candidate with its measurements and verdict, and
+writes the chosen photo (already cropped to the screen) into `out/`.
+
+**The UI** (Svelte 5), in a browser with an in-memory mock backend:
+
+```sh
+bun install
+bun run dev            # http://localhost:1420, sample scenes instead of real photos
+bun test               # unit tests of the UI logic
+bun run check          # svelte-check
+```
+
+**The desktop app** (UI + real engine): `bun run tauri dev`. On Linux this needs the
+[Tauri prerequisites](https://v2.tauri.app/start/prerequisites/).
+
+Build notes: the default TLS backend is `ring` (needs a C compiler). Without one, build with
+`--no-default-features --features tls-graviola` (pure Rust). `wallpaper-core` links the system SQLite on desktop;
+Android builds must enable the `sqlite-bundled` feature.
 
 ## Status
 
