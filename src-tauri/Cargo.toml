@@ -1,0 +1,29 @@
+[package]
+name = "dynamic-themed-wallpapers"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+description = "Daily wallpaper of a place you choose — Tauri app shell"
+
+[lib]
+name = "dtw_lib"
+# staticlib/cdylib: the Android build loads the cdylib (and the background worker calls into it over JNI).
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+wallpaper-core = { path = "../crates/core", default-features = false }
+base64 = "0.22"
+
+[features]
+default = ["tls-ring"]
+tls-ring = ["wallpaper-core/tls-ring"]
+tls-graviola = ["wallpaper-core/tls-graviola"]
+sqlite-bundled = ["wallpaper-core/sqlite-bundled"]
