@@ -46,3 +46,10 @@ Real runs show most daytime photos are "mid" tone, so `dark`/`light` leave few c
 - **A (current, recommended):** keep absolute thresholds, fetch more candidates (prefetch makes this cheap).
 - B: relative filter (darkest third of the batch) — always finds something, but "dark" may then be mid-grey.
 - C: loosen thresholds (median ≤ 0.35) — more candidates, slightly less dark.
+
+## Q5. SQLite: system library here, bundled for Android
+
+Stage 5 uses `rusqlite` as planned. `rusqlite/bundled` compiles SQLite from C, which this sandbox cannot do
+(see Q4), so desktop builds link the system `libsqlite3` and the Android build must enable the
+`sqlite-bundled` feature of `wallpaper-core` (there is no system SQLite to link on Android).
+**Recommended:** keep. Nothing to decide unless you want a pure-Rust store (`redb`) instead — then stage 5 is redone.

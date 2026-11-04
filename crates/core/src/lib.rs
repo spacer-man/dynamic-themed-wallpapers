@@ -10,6 +10,7 @@ pub mod pipeline;
 pub mod place;
 pub mod score;
 pub mod source;
+pub mod store;
 pub mod text;
 pub mod theme;
 

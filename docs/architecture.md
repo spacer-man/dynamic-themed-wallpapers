@@ -48,3 +48,4 @@ command on a worker thread. An async runtime would add binary size and complexit
 - 2026-11-05: blocking HTTP via `ureq` behind a `HttpClient` trait; fixtures in tests.
 - 2026-11-05: places resolved without SPARQL (WDQS was rate-limited to 1 req/min): `wbsearchentities`, `wbgetclaims`, and `haswbstatement:` CirrusSearch for sub-places.
 - 2026-11-05: TLS provider is a feature: `tls-ring` (default) or `tls-graviola` (pure Rust), see OPEN-QUESTIONS Q4.
+- 2026-11-05: storage is SQLite via `rusqlite` (WAL, append-only migrations keyed by `user_version`). Desktop links system libsqlite3; Android enables `sqlite-bundled`. Rendered wallpapers live as files in a cache directory indexed in SQLite: `ready` (prefetched) → `used`, LRU eviction that never touches the current wallpaper. Photos are never stored in the DB.
