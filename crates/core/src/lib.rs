@@ -2,12 +2,15 @@
 //! and on-device storage. Pure Rust, no Tauri, no Android — the app shell and the background
 //! worker both call into this crate.
 
+pub mod analysis;
 pub mod error;
 pub mod geo;
 pub mod http;
 pub mod place;
+pub mod score;
 pub mod source;
 pub mod text;
+pub mod theme;
 
 pub use error::{Error, Result};
 pub use geo::GeoPoint;
