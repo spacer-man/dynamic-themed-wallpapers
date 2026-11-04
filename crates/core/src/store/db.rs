@@ -72,6 +72,9 @@ const MIGRATIONS: &[&str] = &[
     CREATE INDEX cache_lru ON cache(last_used_at);
     CREATE INDEX cache_ready ON cache(status, score DESC);
     ",
+    // v2: remember each cached photo's tone, so a queue filled under one tone filter can't hand
+    // out the wrong tone after the setting (or the system theme) changes.
+    "ALTER TABLE cache ADD COLUMN tone TEXT NOT NULL DEFAULT 'mid';",
 ];
 
 pub const SCHEMA_VERSION: u32 = MIGRATIONS.len() as u32;

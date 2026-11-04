@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use wallpaper_core::analysis::{Analysis, CropRect, Swatch, Tone};
 use wallpaper_core::pipeline::Evaluated;
-use wallpaper_core::score::{Features, Model, Reject, N_FEATURES, PRIOR_WEIGHTS};
+use wallpaper_core::score::{Features, Model, Reject, ToneFilter, N_FEATURES, PRIOR_WEIGHTS};
 use wallpaper_core::source::{Candidate, Curation, License, SourceKind};
 use wallpaper_core::store::{ImageCache, Store};
 
@@ -217,17 +217,28 @@ fn cache_hands_out_best_ready_first_and_marks_used() {
     assert_eq!(cache.ready_count().unwrap(), 2);
     assert_eq!(cache.total_bytes().unwrap(), 17); // 8 + 9 bytes
 
-    let first = cache.take_next_ready(200).unwrap().unwrap();
+    let first = cache
+        .take_next_ready(200, ToneFilter::Any)
+        .unwrap()
+        .unwrap();
     assert_eq!(first.candidate.id, "high");
     assert_eq!(first.dhash, 2);
     assert_eq!(first.palette.len(), 1);
     assert_eq!(std::fs::read(&first.path).unwrap(), b"jpeg-high");
     assert_eq!(cache.ready_count().unwrap(), 1);
     assert_eq!(
-        cache.take_next_ready(201).unwrap().unwrap().candidate.id,
+        cache
+            .take_next_ready(201, ToneFilter::Any)
+            .unwrap()
+            .unwrap()
+            .candidate
+            .id,
         "low"
     );
-    assert!(cache.take_next_ready(202).unwrap().is_none());
+    assert!(cache
+        .take_next_ready(202, ToneFilter::Any)
+        .unwrap()
+        .is_none());
 }
 
 #[test]
@@ -251,11 +262,11 @@ fn eviction_drops_used_first_then_lowest_score_and_keeps_current() {
     cache
         .put_ready(&evaluated("old-used", 0.9, 1), &jpeg, 1)
         .unwrap();
-    cache.take_next_ready(2).unwrap(); // old-used → used @2
+    cache.take_next_ready(2, ToneFilter::Any).unwrap(); // old-used → used @2
     cache
         .put_ready(&evaluated("current", 0.9, 2), &jpeg, 3)
         .unwrap();
-    cache.take_next_ready(4).unwrap(); // current → used @4
+    cache.take_next_ready(4, ToneFilter::Any).unwrap(); // current → used @4
     cache
         .put_ready(&evaluated("ready-low", 0.4, 3), &jpeg, 5)
         .unwrap();
@@ -271,7 +282,7 @@ fn eviction_drops_used_first_then_lowest_score_and_keeps_current() {
         .put_ready(&evaluated("ready-mid", 0.6, 5), &jpeg, 7)
         .unwrap();
     assert_eq!(cache.total_bytes().unwrap(), 30);
-    let order: Vec<_> = std::iter::from_fn(|| cache.take_next_ready(10).unwrap())
+    let order: Vec<_> = std::iter::from_fn(|| cache.take_next_ready(10, ToneFilter::Any).unwrap())
         .map(|r| r.candidate.id)
         .collect();
     assert_eq!(order, ["ready-high", "ready-mid"], "ready-low was evicted");
@@ -301,7 +312,7 @@ fn reconcile_repairs_index_and_orphans() {
     assert_eq!(cache.ready_count().unwrap(), 1);
     // A ready row whose file vanished later is skipped when taking.
     std::fs::remove_file(&kept).unwrap();
-    assert!(cache.take_next_ready(5).unwrap().is_none());
+    assert!(cache.take_next_ready(5, ToneFilter::Any).unwrap().is_none());
 }
 
 #[test]
@@ -324,4 +335,38 @@ fn clear_and_forget() {
     assert_eq!(s.feedback_counts().unwrap(), (0, 0));
     assert_eq!(s.load_model().unwrap().updates, 0);
     assert_eq!(s.get_setting("keep").unwrap().as_deref(), Some("me"));
+}
+
+#[test]
+fn queue_respects_the_tone_filter_when_taking() {
+    let dir = scratch("tone");
+    let s = Store::open_in_memory().unwrap();
+    let cache = ImageCache::new(&s, dir.join("img"), 10_000).unwrap();
+    let mut dark = evaluated("dark", 0.5, 1);
+    dark.analysis.tone = Tone::Dark;
+    let mut light = evaluated("light", 0.9, 2);
+    light.analysis.tone = Tone::Light;
+    cache.put_ready(&dark, b"d", 1).unwrap();
+    cache.put_ready(&light, b"l", 2).unwrap();
+
+    assert_eq!(cache.ready_count().unwrap(), 2);
+    assert_eq!(cache.ready_count_for(ToneFilter::Dark).unwrap(), 1);
+    assert_eq!(cache.ready_count_for(ToneFilter::Light).unwrap(), 1);
+
+    // The better-scored light one must not be handed out under a dark filter.
+    let got = cache.take_next_ready(5, ToneFilter::Dark).unwrap().unwrap();
+    assert_eq!(got.candidate.id, "dark");
+    assert!(cache
+        .take_next_ready(6, ToneFilter::Dark)
+        .unwrap()
+        .is_none());
+    assert_eq!(
+        cache
+            .take_next_ready(7, ToneFilter::Any)
+            .unwrap()
+            .unwrap()
+            .candidate
+            .id,
+        "light"
+    );
 }

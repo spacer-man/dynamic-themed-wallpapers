@@ -209,7 +209,15 @@ impl Engine {
 
     pub fn save_settings(&self, settings: Settings) -> Result<Settings> {
         let settings = settings.sanitized();
-        self.store()?.set_json(KEY_SETTINGS, &settings)?;
+        let old = self.settings()?;
+        let store = self.store()?;
+        store.set_json(KEY_SETTINGS, &settings)?;
+        // The queue was assembled under the old search conditions. (Tone is not listed: it is
+        // re-checked when a wallpaper is taken from the queue.)
+        if old.radius_km != settings.radius_km || old.unsplash_enabled != settings.unsplash_enabled
+        {
+            self.cache(&store, &settings)?.drop_ready()?;
+        }
         Ok(settings)
     }
 
@@ -312,7 +320,7 @@ impl Engine {
         let mut last_error = None;
         let mut rng = fastrand::Rng::with_seed(now as u64);
         for round in 0..MAX_ROUNDS {
-            if cache.ready_count()? >= target_ready {
+            if cache.ready_count_for(tone)? >= target_ready {
                 break;
             }
             req.seed = (now as u64).wrapping_add(round);
@@ -348,7 +356,7 @@ impl Engine {
             }
             // Within one batch, also avoid near-identical frames of the same shoot.
             let mut taken: Vec<u64> = Vec::new();
-            while cache.ready_count()? < target_ready {
+            while cache.ready_count_for(tone)? < target_ready {
                 let Some(i) = pipeline::choose(&evaluated, EPSILON, &mut rng) else {
                     break;
                 };
@@ -368,7 +376,7 @@ impl Engine {
                 }
             }
         }
-        if report.added == 0 && cache.ready_count()? == 0 {
+        if report.added == 0 && cache.ready_count_for(tone)? == 0 {
             return Err(last_error.unwrap_or_else(|| {
                 Error::NotFound("no suitable photo found for this place and filters".into())
             }));
@@ -400,16 +408,17 @@ impl Engine {
     pub fn change_now(&self, screen: Screen, system_dark: bool, now: i64) -> Result<Shown> {
         let store = self.store()?;
         let settings = self.settings()?;
+        let tone = settings.effective_tone(system_dark);
         {
             let cache = self.cache(&store, &settings)?;
-            if cache.ready_count()? == 0 {
+            if cache.ready_count_for(tone)? == 0 {
                 drop(cache);
                 self.prefetch(screen, system_dark, 1, now)?;
             }
         }
         let cache = self.cache(&store, &settings)?;
         let ready = cache
-            .take_next_ready(now)?
+            .take_next_ready(now, tone)?
             .ok_or_else(|| Error::NotFound("no wallpaper available".into()))?;
         store.record_shown(
             &ready.candidate,

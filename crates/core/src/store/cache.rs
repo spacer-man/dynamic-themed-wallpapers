@@ -8,11 +8,27 @@ use std::path::{Path, PathBuf};
 use rusqlite::{params, OptionalExtension};
 
 use super::Store;
-use crate::analysis::Swatch;
+use crate::analysis::{Swatch, Tone};
 use crate::error::{Error, Result};
 use crate::pipeline::Evaluated;
-use crate::score::Features;
+use crate::score::{Features, ToneFilter};
 use crate::source::Candidate;
+
+fn tone_name(t: Tone) -> &'static str {
+    match t {
+        Tone::Dark => "dark",
+        Tone::Mid => "mid",
+        Tone::Light => "light",
+    }
+}
+
+fn filter_name(t: ToneFilter) -> &'static str {
+    match t {
+        ToneFilter::Any => "any",
+        ToneFilter::Dark => "dark",
+        ToneFilter::Light => "light",
+    }
+}
 
 pub const DEFAULT_CACHE_BUDGET_BYTES: u64 = 150 * 1024 * 1024;
 
@@ -75,11 +91,12 @@ impl<'a> ImageCache<'a> {
         std::fs::rename(&tmp, &path)?;
         self.store.conn.execute(
             "INSERT INTO cache(candidate_id, file, bytes, created_at, last_used_at, status, score,
-                               dhash, candidate, features, palette)
-             VALUES (?1, ?2, ?3, ?4, ?4, 'ready', ?5, ?6, ?7, ?8, ?9)
+                               dhash, candidate, features, palette, tone)
+             VALUES (?1, ?2, ?3, ?4, ?4, 'ready', ?5, ?6, ?7, ?8, ?9, ?10)
              ON CONFLICT(candidate_id) DO UPDATE SET
                 bytes = excluded.bytes, created_at = excluded.created_at,
-                last_used_at = excluded.last_used_at, status = 'ready', score = excluded.score",
+                last_used_at = excluded.last_used_at, status = 'ready', score = excluded.score,
+                tone = excluded.tone",
             params![
                 e.candidate.id,
                 name,
@@ -90,6 +107,7 @@ impl<'a> ImageCache<'a> {
                 serde_json::to_string(&e.candidate)?,
                 serde_json::to_string(&e.features)?,
                 serde_json::to_string(&e.analysis.palette)?,
+                tone_name(e.analysis.tone),
             ],
         )?;
         self.evict()?;
@@ -142,10 +160,16 @@ impl<'a> ImageCache<'a> {
         Ok(())
     }
 
+    /// All prefetched wallpapers, whatever their tone.
     pub fn ready_count(&self) -> Result<u32> {
+        self.ready_count_for(ToneFilter::Any)
+    }
+
+    /// Prefetched wallpapers that satisfy the tone filter.
+    pub fn ready_count_for(&self, tone: ToneFilter) -> Result<u32> {
         Ok(self.store.conn.query_row(
-            "SELECT COUNT(*) FROM cache WHERE status = 'ready'",
-            [],
+            "SELECT COUNT(*) FROM cache WHERE status = 'ready' AND (?1 = 'any' OR tone = ?1)",
+            [filter_name(tone)],
             |r| r.get(0),
         )?)
     }
@@ -160,14 +184,17 @@ impl<'a> ImageCache<'a> {
         Ok(n as u64)
     }
 
-    /// Take the best prefetched wallpaper (highest score) and mark it used.
-    pub fn take_next_ready(&self, now: i64) -> Result<Option<Ready>> {
+    /// Take the best prefetched wallpaper (highest score) that satisfies the tone filter and
+    /// mark it used. The filter is applied here, not only when prefetching, because the
+    /// setting (or the system theme) may have changed since the queue was filled.
+    pub fn take_next_ready(&self, now: i64, tone: ToneFilter) -> Result<Option<Ready>> {
         let tx_conn = &self.store.conn;
         let row = tx_conn
             .query_row(
                 "SELECT candidate_id, file, score, dhash, candidate, features, palette
-                 FROM cache WHERE status = 'ready' ORDER BY score DESC, created_at ASC LIMIT 1",
-                [],
+                 FROM cache WHERE status = 'ready' AND (?1 = 'any' OR tone = ?1)
+                 ORDER BY score DESC, created_at ASC LIMIT 1",
+                [filter_name(tone)],
                 |r| {
                     Ok((
                         r.get::<_, String>(0)?,
@@ -188,7 +215,7 @@ impl<'a> ImageCache<'a> {
         if !path.exists() {
             // Index says ready but the file is gone (cleared by the OS, manual deletion).
             tx_conn.execute("DELETE FROM cache WHERE candidate_id = ?1", [&id])?;
-            return self.take_next_ready(now);
+            return self.take_next_ready(now, tone);
         }
         tx_conn.execute(
             "UPDATE cache SET status = 'used', last_used_at = ?2 WHERE candidate_id = ?1",

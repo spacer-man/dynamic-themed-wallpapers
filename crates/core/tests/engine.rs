@@ -248,3 +248,53 @@ fn prefetch_if_low_only_works_when_needed() {
     assert_eq!(again.unwrap().added, 0);
     assert!(http.requests().len() > before);
 }
+
+#[test]
+fn a_queue_filled_under_one_filter_is_filtered_again_when_taken() {
+    // alpha is dark, beta is light.
+    let (engine, _) = engine_with_brightness("queue-tone", 35, 215);
+    engine.select_place("Q34600", "en").unwrap();
+    engine.prefetch(SCREEN, false, 2, NOW).unwrap();
+    assert_eq!(engine.cache_info().unwrap().ready, 2);
+
+    let with = |s: Settings| engine.save_settings(s).unwrap();
+    with(Settings {
+        tone: ToneFilter::Light,
+        ..Default::default()
+    });
+    let shown = engine.change_now(SCREEN, false, NOW).unwrap();
+    assert_eq!(
+        shown.entry.candidate.title, "beta",
+        "the light photo, straight from the queue"
+    );
+
+    // Now the user switches to dark: the queued dark photo is used, no new search needed.
+    with(Settings {
+        tone: ToneFilter::Dark,
+        ..Default::default()
+    });
+    let shown = engine.change_now(SCREEN, false, NOW + 1).unwrap();
+    assert_eq!(shown.entry.candidate.title, "alpha");
+}
+
+#[test]
+fn changing_the_radius_drops_the_queue_but_changing_tone_does_not() {
+    let (engine, _) = engine("radius-queue");
+    engine.select_place("Q34600", "en").unwrap();
+    engine.prefetch(SCREEN, false, 2, NOW).unwrap();
+    assert_eq!(engine.cache_info().unwrap().ready, 2);
+    engine
+        .save_settings(Settings {
+            tone: ToneFilter::Dark,
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(engine.cache_info().unwrap().ready, 2);
+    engine
+        .save_settings(Settings {
+            radius_km: Some(5.0),
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(engine.cache_info().unwrap().ready, 0);
+}
