@@ -9,6 +9,7 @@ pub mod http;
 pub mod pipeline;
 pub mod place;
 pub mod score;
+pub mod service;
 pub mod source;
 pub mod store;
 pub mod text;

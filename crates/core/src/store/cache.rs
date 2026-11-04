@@ -96,6 +96,52 @@ impl<'a> ImageCache<'a> {
         Ok(path)
     }
 
+    pub fn has(&self, candidate_id: &str) -> Result<bool> {
+        Ok(self
+            .store
+            .conn
+            .query_row(
+                "SELECT 1 FROM cache WHERE candidate_id = ?1",
+                [candidate_id],
+                |_| Ok(()),
+            )
+            .optional()?
+            .is_some())
+    }
+
+    /// Path of the cached file, if it exists on disk.
+    pub fn path_of(&self, candidate_id: &str) -> Result<Option<PathBuf>> {
+        let file: Option<String> = self
+            .store
+            .conn
+            .query_row(
+                "SELECT file FROM cache WHERE candidate_id = ?1",
+                [candidate_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        Ok(file.map(|f| self.dir.join(f)).filter(|p| p.exists()))
+    }
+
+    /// Delete the prefetched-but-unshown wallpapers (e.g. after the place changed).
+    pub fn drop_ready(&self) -> Result<()> {
+        let files: Vec<String> = {
+            let mut stmt = self
+                .store
+                .conn
+                .prepare("SELECT file FROM cache WHERE status = 'ready'")?;
+            let rows = stmt.query_map([], |r| r.get(0))?;
+            rows.collect::<std::result::Result<_, _>>()?
+        };
+        for f in files {
+            let _ = std::fs::remove_file(self.dir.join(f));
+        }
+        self.store
+            .conn
+            .execute("DELETE FROM cache WHERE status = 'ready'", [])?;
+        Ok(())
+    }
+
     pub fn ready_count(&self) -> Result<u32> {
         Ok(self.store.conn.query_row(
             "SELECT COUNT(*) FROM cache WHERE status = 'ready'",
