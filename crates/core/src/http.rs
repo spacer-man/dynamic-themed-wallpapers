@@ -25,8 +25,12 @@ pub const MAX_JSON_BYTES: u64 = 8 * 1024 * 1024;
 pub const MAX_IMAGE_BYTES: u64 = 40 * 1024 * 1024;
 
 pub trait HttpClient: Send + Sync {
-    /// GET `url` and return the body. Non-2xx statuses are errors.
-    fn get(&self, url: &str, max_bytes: u64) -> Result<Vec<u8>>;
+    /// GET `url` with extra request headers and return the body. Non-2xx statuses are errors.
+    fn get_with(&self, url: &str, headers: &[(&str, &str)], max_bytes: u64) -> Result<Vec<u8>>;
+
+    fn get(&self, url: &str, max_bytes: u64) -> Result<Vec<u8>> {
+        self.get_with(url, &[], max_bytes)
+    }
 }
 
 pub fn get_json<T: DeserializeOwned>(
@@ -95,12 +99,12 @@ impl Default for UreqClient {
 }
 
 impl HttpClient for UreqClient {
-    fn get(&self, url: &str, max_bytes: u64) -> Result<Vec<u8>> {
-        let mut resp = self
-            .agent
-            .get(url)
-            .call()
-            .map_err(|e| Error::Network(e.to_string()))?;
+    fn get_with(&self, url: &str, headers: &[(&str, &str)], max_bytes: u64) -> Result<Vec<u8>> {
+        let mut req = self.agent.get(url);
+        for (k, v) in headers {
+            req = req.header(*k, *v);
+        }
+        let mut resp = req.call().map_err(|e| Error::Network(e.to_string()))?;
         let status = resp.status().as_u16();
         if !(200..300).contains(&status) {
             return Err(Error::Status {
@@ -126,11 +130,12 @@ pub mod fixture {
     use crate::error::{Error, Result};
 
     type Route = (Vec<String>, Vec<u8>);
+    type Logged = (String, Vec<(String, String)>);
 
     #[derive(Default)]
     pub struct FixtureHttp {
         routes: Vec<Route>,
-        log: Mutex<Vec<String>>,
+        log: Mutex<Vec<Logged>>,
     }
 
     impl FixtureHttp {
@@ -146,13 +151,27 @@ pub mod fixture {
 
         /// URLs requested so far, in order.
         pub fn requests(&self) -> Vec<String> {
-            self.log.lock().unwrap().clone()
+            self.log
+                .lock()
+                .unwrap()
+                .iter()
+                .map(|(u, _)| u.clone())
+                .collect()
+        }
+
+        /// Headers sent with the `i`-th request.
+        pub fn headers(&self, i: usize) -> Vec<(String, String)> {
+            self.log.lock().unwrap()[i].1.clone()
         }
     }
 
     impl HttpClient for FixtureHttp {
-        fn get(&self, url: &str, max_bytes: u64) -> Result<Vec<u8>> {
-            self.log.lock().unwrap().push(url.to_owned());
+        fn get_with(&self, url: &str, headers: &[(&str, &str)], max_bytes: u64) -> Result<Vec<u8>> {
+            let headers = headers
+                .iter()
+                .map(|(k, v)| (k.to_string(), v.to_string()))
+                .collect();
+            self.log.lock().unwrap().push((url.to_owned(), headers));
             let decoded = percent_encoding::percent_decode_str(url).decode_utf8_lossy();
             for (needles, body) in &self.routes {
                 if needles.iter().all(|n| decoded.contains(n.as_str())) {

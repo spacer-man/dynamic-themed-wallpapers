@@ -6,6 +6,8 @@ pub mod error;
 pub mod geo;
 pub mod http;
 pub mod place;
+pub mod source;
+pub mod text;
 
 pub use error::{Error, Result};
 pub use geo::GeoPoint;
