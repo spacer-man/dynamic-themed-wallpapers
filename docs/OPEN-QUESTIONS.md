@@ -37,3 +37,12 @@ nono does not allow reading `/usr/include`, so any crate with a C part fails to 
   `--no-default-features --features tls-graviola` (pure-Rust provider by the rustls author).
   **Recommended:** keep as is. Optional fix for the sandbox: `nono run --allow /usr/include -- claude`.
 - Storage (stage 5): see Q5.
+
+## Q6. Strict tone filters need big batches
+
+Real runs show most daytime photos are "mid" tone, so `dark`/`light` leave few candidates per refill
+(2 of 18 for dark Kyoto). Currently: widen by paging/seed and fetch more. Alternatives:
+
+- **A (current, recommended):** keep absolute thresholds, fetch more candidates (prefetch makes this cheap).
+- B: relative filter (darkest third of the batch) — always finds something, but "dark" may then be mid-grey.
+- C: loosen thresholds (median ≤ 0.35) — more candidates, slightly less dark.

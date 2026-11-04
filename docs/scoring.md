@@ -67,5 +67,21 @@ exploration for the model to learn, never the worst candidates.
 
 ## Calibration status
 
-Thresholds are first guesses checked on synthetic images (unit tests). They are to be re-checked on real photos with
-the CLI demo (`examples/pick.rs`, prints every measurement) — see the "Calibration" section below once filled in.
+Thresholds started as guesses checked on synthetic images (unit tests), then were looked at on real Commons photos
+with the CLI demo (`cargo run -p wallpaper-core --example pick -- --place Kyoto --tone dark --explain`).
+
+Observations from the first real runs (2026-11-05):
+
+- **Daytime travel photos are almost all "mid"** (median luma 0.3–0.6). With `--tone dark` only 2 of 18 Kyoto
+  candidates passed, with `--tone light` few too. Expect to fetch a bigger batch for the strict filters — the
+  pipeline's `limit` and paging (`CandidateRequest::seed`) exist for that. The dark thresholds (median ≤ 0.30,
+  p75 ≤ 0.50) look right: the accepted photos were night shots and shaded interiors.
+- **Panoramas are cropped hard** (`crop_keep` 0.07–0.3 for landscape photos on a 9:20 screen). Only photos where
+  more than ~20% survives are accepted; `crop_keep` ranks the rest. This is the main reason many candidates are
+  "TooSmall" for 1080×2400 screens: a 4000 px wide photo has only ~1200 px of useful width after a portrait crop.
+- **Close-ups of plants/shells slip through** the off-topic filter when their Commons category isn't
+  "Featured pictures of <subject>". Accepted for now; the learning model is meant to push these down.
+- Country-level places are sampled from several sub-places and **interleaved**, otherwise one dense area (Hiroshima)
+  fills the whole batch.
+
+Open: whether to make the tone filter relative (e.g. "darkest third of this batch") — see OPEN-QUESTIONS Q6.

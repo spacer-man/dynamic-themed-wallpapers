@@ -75,16 +75,29 @@ impl<'a> CommonsSource<'a> {
     }
 
     /// Run one search query and turn its pages into candidates.
-    fn search(&self, query: &str, place_label: &str) -> Result<Vec<Candidate>> {
+    ///
+    /// `page` selects which slice of the results to take (0 = best). Geographic queries get
+    /// variety from paging; category queries use random order.
+    fn search(&self, query: &str, place_label: &str, page: u32) -> Result<Vec<Candidate>> {
+        let results = self.search_page(query, place_label, page)?;
+        if results.is_empty() && page > 0 {
+            // Paged past the end of a small result set.
+            return self.search_page(query, place_label, 0);
+        }
+        Ok(results)
+    }
+
+    fn search_page(&self, query: &str, place_label: &str, page: u32) -> Result<Vec<Candidate>> {
         let limit = PAGE_SIZE.to_string();
-        let params = vec![
+        let offset = (page * PAGE_SIZE).to_string();
+        let geo = query.contains("nearcoord:");
+        let mut params = vec![
             ("action", "query"),
             ("format", "json"),
             ("formatversion", "2"),
             ("generator", "search"),
             ("gsrnamespace", "6"),
             ("gsrlimit", &limit),
-            ("gsrsort", "random"),
             ("gsrsearch", query),
             ("prop", "imageinfo|coordinates|categories"),
             ("iiprop", "url|size|mime|extmetadata"),
@@ -95,6 +108,11 @@ impl<'a> CommonsSource<'a> {
             ),
             ("cllimit", "max"),
         ];
+        if geo {
+            params.push(("gsroffset", &offset));
+        } else {
+            params.push(("gsrsort", "random"));
+        }
         let mut pages: BTreeMap<u64, Page> = BTreeMap::new();
         let mut cont: Option<Continue> = None;
         // `categories` may be split over several responses; three rounds is plenty at PAGE_SIZE.
@@ -107,6 +125,14 @@ impl<'a> CommonsSource<'a> {
                 }
             }
             let resp: Response = get_json(self.http, &build_url(API, &p), "commons search")?;
+            // A warning means the API ignored part of the query, so the results can be
+            // arbitrary (e.g. worldwide instead of near the place). Fail loudly.
+            if let Some(w) = &resp.warnings {
+                return Err(crate::error::Error::Parse {
+                    what: "commons search",
+                    msg: format!("API warning: {w}"),
+                });
+            }
             for page in resp.query.map(|q| q.pages).unwrap_or_default() {
                 match pages.get_mut(&page.pageid) {
                     Some(existing) => existing.categories.extend(page.categories),
@@ -147,8 +173,9 @@ fn base_filters(req: &CandidateRequest) -> String {
 
 pub fn radius_query(center: GeoPoint, km: f64, req: &CandidateRequest) -> String {
     format!(
-        "nearcoord:{:.1}km,{:.5},{:.5} {} {}",
-        km.max(0.1),
+        "nearcoord:{}m,{:.5},{:.5} {} {}",
+        // Whole metres: the API rejects fractional units (and then silently drops the filter).
+        (km * 1000.0).round().max(100.0) as u64,
         center.lat,
         center.lon,
         curated_filter(),
@@ -187,25 +214,32 @@ impl Source for CommonsSource<'_> {
         let mut out = Vec::new();
         match scope {
             Scope::Radius { center, km } => {
-                out.extend(self.search(&radius_query(*center, *km, req), &place.label)?);
+                out.extend(self.search(
+                    &radius_query(*center, *km, req),
+                    &place.label,
+                    req.page(),
+                )?);
             }
             Scope::Hierarchy => {
                 let mut last_err = None;
+                let mut groups: Vec<Vec<Candidate>> = Vec::new();
                 for sub in pick_sub_places(&req.sub_places, SUB_PLACES_PER_REFILL, req.seed) {
                     let q = radius_query(sub.coords, SUB_PLACE_RADIUS_KM, req);
                     let label = format!("{}, {}", sub.label, place.label);
                     // One flaky sub-place shouldn't sink the whole refill.
-                    match self.search(&q, &label) {
-                        Ok(c) => out.extend(c),
+                    match self.search(&q, &label, req.page()) {
+                        Ok(c) => groups.push(c),
                         Err(e) => last_err = Some(e),
                     }
                 }
                 if let Some(cat) = &place.commons_category {
-                    match self.search(&category_query(cat, req), &place.label) {
-                        Ok(c) => out.extend(c),
+                    match self.search(&category_query(cat, req), &place.label, 0) {
+                        Ok(c) => groups.push(c),
                         Err(e) => last_err = Some(e),
                     }
                 }
+                // Round-robin so one dense area (Hiroshima…) can't crowd out the rest.
+                out = super::interleave(groups);
                 if out.is_empty() {
                     if let Some(e) = last_err {
                         return Err(e);
@@ -246,6 +280,7 @@ fn strip_query(url: &str) -> String {
 
 #[derive(Deserialize)]
 struct Response {
+    warnings: Option<Value>,
     query: Option<Query>,
     r#continue: Option<Continue>,
 }
@@ -420,7 +455,7 @@ mod tests {
         let q = radius_query(GeoPoint::new(35.01161, 135.76811), 16.2, &req);
         assert_eq!(
             q,
-            "nearcoord:16.2km,35.01161,135.76811 \
+            "nearcoord:16200m,35.01161,135.76811 \
              incategory:Featured_pictures_on_Wikimedia_Commons|Quality_images|Valued_images_sorted_by_promotion_date \
              filemime:image/jpeg fileh:>1919"
         );

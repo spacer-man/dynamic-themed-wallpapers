@@ -6,6 +6,7 @@ pub mod analysis;
 pub mod error;
 pub mod geo;
 pub mod http;
+pub mod pipeline;
 pub mod place;
 pub mod score;
 pub mod source;

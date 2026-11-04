@@ -22,7 +22,7 @@ fn kyoto() -> Place {
 #[test]
 fn commons_radius_parses_and_filters() {
     let http = FixtureHttp::new().route(
-        &["generator=search", "nearcoord:16.2km,35.01160,135.76810"],
+        &["generator=search", "nearcoord:16233m,35.01160,135.76810"],
         fixture("commons/kyoto_radius.json"),
     );
     let place = kyoto();
@@ -59,6 +59,25 @@ fn commons_radius_parses_and_filters() {
     );
     assert!(got[0].curation.featured);
     assert_eq!(bamboo.credit_line(), "Photo: Basile Morin, CC BY-SA 4.0");
+}
+
+#[test]
+fn commons_api_warnings_are_errors_not_silent_garbage() {
+    // Real-world case: a malformed nearcoord makes the API drop the geo filter and return
+    // photos from anywhere, with only a warning to show for it.
+    let http = FixtureHttp::new().route(
+        &["generator=search"],
+        r#"{"warnings":{"search":{"*":"The geo distance '16.2km' provided to 'nearcoord' could not be parsed."}},"query":{"pages":[]}}"#,
+    );
+    let place = kyoto();
+    let err = CommonsSource::new(&http)
+        .candidates(
+            &place,
+            &place.default_scope(),
+            &CandidateRequest::new(1080, 2400),
+        )
+        .unwrap_err();
+    assert!(err.to_string().contains("could not be parsed"), "{err}");
 }
 
 #[test]
@@ -126,7 +145,7 @@ fn commons_hierarchy_samples_sub_places() {
     let reqs = http.requests();
     assert_eq!(reqs.len(), 2, "{reqs:#?}");
     let decoded: Vec<String> = reqs.iter().map(|u| percent_decode(u)).collect();
-    assert!(decoded[0].contains("nearcoord:3.0km,35.36000,138.73000"));
+    assert!(decoded[0].contains("nearcoord:3000m,35.36000,138.73000"));
     assert!(decoded[1].contains("Featured_pictures_of_Japan"));
     // Same fixture served twice → deduplicated.
     assert_eq!(got.len(), 2);

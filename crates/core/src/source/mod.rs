@@ -126,6 +126,11 @@ impl CandidateRequest {
         }
     }
 
+    /// Which result page geographic searches should take (rotates with the seed).
+    pub fn page(&self) -> u32 {
+        (self.seed % 4) as u32
+    }
+
     /// Smallest image height that can still fill the screen without visible upscaling.
     /// A little upscaling (≈ 20%) is invisible on a phone, so we allow it.
     pub fn min_image_height(&self) -> u32 {
@@ -154,6 +159,23 @@ pub trait Source: Send + Sync {
     }
 }
 
+/// Take one item from each group in turn: [a1 a2 a3] [b1 b2] → a1 b1 a2 b2 a3.
+pub fn interleave<T>(groups: Vec<Vec<T>>) -> Vec<T> {
+    let mut iters: Vec<_> = groups.into_iter().map(Vec::into_iter).collect();
+    let mut out = Vec::new();
+    loop {
+        let before = out.len();
+        for it in &mut iters {
+            if let Some(x) = it.next() {
+                out.push(x);
+            }
+        }
+        if out.len() == before {
+            return out;
+        }
+    }
+}
+
 /// Keep the first occurrence of each id.
 pub fn dedup(candidates: &mut Vec<Candidate>) {
     let mut seen = std::collections::HashSet::new();
@@ -163,6 +185,15 @@ pub fn dedup(candidates: &mut Vec<Candidate>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn interleave_round_robin() {
+        assert_eq!(
+            interleave(vec![vec![1, 2, 3], vec![10, 20], vec![], vec![100]]),
+            [1, 10, 100, 2, 20, 3]
+        );
+        assert!(interleave::<u8>(vec![]).is_empty());
+    }
 
     #[test]
     fn curation_score_ordering() {

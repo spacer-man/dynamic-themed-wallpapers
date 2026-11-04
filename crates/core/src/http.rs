@@ -98,8 +98,23 @@ impl Default for UreqClient {
     }
 }
 
+/// Pause before the single retry of a transient failure (connection reset, 429, 5xx).
+const RETRY_DELAY: Duration = Duration::from_millis(1500);
+
 impl HttpClient for UreqClient {
     fn get_with(&self, url: &str, headers: &[(&str, &str)], max_bytes: u64) -> Result<Vec<u8>> {
+        match self.get_once(url, headers, max_bytes) {
+            Err(e) if e.is_transient() => {
+                std::thread::sleep(RETRY_DELAY);
+                self.get_once(url, headers, max_bytes)
+            }
+            r => r,
+        }
+    }
+}
+
+impl UreqClient {
+    fn get_once(&self, url: &str, headers: &[(&str, &str)], max_bytes: u64) -> Result<Vec<u8>> {
         let mut req = self.agent.get(url);
         for (k, v) in headers {
             req = req.header(*k, *v);
