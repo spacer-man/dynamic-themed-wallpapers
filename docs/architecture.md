@@ -49,3 +49,7 @@ command on a worker thread. An async runtime would add binary size and complexit
 - 2026-11-05: places resolved without SPARQL (WDQS was rate-limited to 1 req/min): `wbsearchentities`, `wbgetclaims`, and `haswbstatement:` CirrusSearch for sub-places.
 - 2026-11-05: TLS provider is a feature: `tls-ring` (default) or `tls-graviola` (pure Rust), see OPEN-QUESTIONS Q4.
 - 2026-11-05: storage is SQLite via `rusqlite` (WAL, append-only migrations keyed by `user_version`). Desktop links system libsqlite3; Android enables `sqlite-bundled`. Rendered wallpapers live as files in a cache directory indexed in SQLite: `ready` (prefetched) → `used`, LRU eviction that never touches the current wallpaper. Photos are never stored in the DB.
+
+- 2026-11-05: `service::Engine` is the single entry point for everything the app does; Tauri commands (and later the JNI worker) are thin wrappers. It holds only configuration and opens a short-lived SQLite connection per call.
+- 2026-11-05: prefetched wallpapers carry their tone (store migration v2) and the tone filter is applied again when one is taken, so changing the filter or the system theme never hands out the wrong tone.
+- 2026-11-05: UI talks to the backend only via `src/lib/api.ts`; in a browser it uses `src/lib/mock.ts`. Theme colours come from `core/theme.rs` (palette → contrast-safe colours); the caption scrim is computed in the UI per photo.
