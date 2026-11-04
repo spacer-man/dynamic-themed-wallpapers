@@ -1,0 +1,52 @@
+<script lang="ts">
+  import { t } from '../i18n.svelte';
+  import type { HistoryEntry } from '../types';
+  import Sheet from './Sheet.svelte';
+
+  let { entry, onclose }: { entry: HistoryEntry; onclose: () => void } = $props();
+  const c = $derived(entry.candidate);
+</script>
+
+<Sheet title={t('details.title')} {onclose}>
+  <h3 class="title">{c.title}</h3>
+  <dl>
+    <dt>{t('details.place')}</dt>
+    <dd>{c.place_label}</dd>
+    <dt>{t('details.author')}</dt>
+    <dd>{c.author}</dd>
+    <dt>{t('details.license')}</dt>
+    <dd>{c.license.short_name}</dd>
+    <dt>{t('details.source')}</dt>
+    <!-- Photo metadata is untrusted: rendered as text only, link target is a plain https URL. -->
+    <dd><a href={c.page_url} target="_blank" rel="noopener noreferrer">{c.page_url}</a></dd>
+  </dl>
+  {#if c.description}<p class="hint">{c.description}</p>{/if}
+</Sheet>
+
+<style>
+  .title {
+    font-size: var(--fs-md);
+    overflow-wrap: anywhere;
+  }
+
+  dl {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: var(--space-2) var(--space-4);
+    margin: 0;
+    font-size: var(--fs-sm);
+  }
+
+  dt {
+    color: var(--muted);
+  }
+
+  dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+  }
+
+  a {
+    color: var(--accent);
+  }
+</style>
