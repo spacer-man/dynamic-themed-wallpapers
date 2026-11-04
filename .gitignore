@@ -1,5 +1,6 @@
 # Rust
 target/
+.cargo-home/
 
 # JS
 node_modules/

@@ -46,3 +46,5 @@ command on a worker thread. An async runtime would add binary size and complexit
 
 - 2026-11-05: package name `wallpaper-core` (see OPEN-QUESTIONS Q2).
 - 2026-11-05: blocking HTTP via `ureq` behind a `HttpClient` trait; fixtures in tests.
+- 2026-11-05: places resolved without SPARQL (WDQS was rate-limited to 1 req/min): `wbsearchentities`, `wbgetclaims`, and `haswbstatement:` CirrusSearch for sub-places.
+- 2026-11-05: TLS provider is a feature: `tls-ring` (default) or `tls-graviola` (pure Rust), see OPEN-QUESTIONS Q4.

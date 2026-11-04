@@ -1,0 +1,23 @@
+[package]
+name = "wallpaper-core"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+description = "Place search, photo sources and beauty scoring for dynamic-themed-wallpapers"
+
+[dependencies]
+percent-encoding = "2.3.2"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+thiserror = "2.0.21"
+ureq = { version = "3.2.1", default-features = false, features = ["gzip"] }
+rustls-graviola = { version = "0.4.0", optional = true }
+
+[features]
+default = ["tls-ring"]
+# Production TLS: rustls + ring (needs a C compiler, which every Android NDK build has).
+tls-ring = ["ureq/rustls"]
+# Pure-Rust TLS (x86_64/aarch64 only). For build environments without C headers.
+tls-graviola = ["ureq/rustls-no-provider", "ureq/rustls-webpki-roots", "dep:rustls-graviola"]
