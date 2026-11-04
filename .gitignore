@@ -1,0 +1,40 @@
+# Rust
+target/
+
+# JS
+node_modules/
+dist/
+.npm-cache/
+.svelte-kit/
+.vite/
+
+# Secrets and local machine config — never commit
+.env
+.env.*
+!.env.example
+*.keystore
+*.jks
+local.properties
+keystore.properties
+
+# Android build output (gen/android itself IS committed)
+src-tauri/gen/android/app/build/
+src-tauri/gen/android/build/
+src-tauri/gen/android/.gradle/
+src-tauri/gen/android/app/src/main/jniLibs/
+src-tauri/gen/schemas/
+*.apk
+*.aab
+
+# Claude Code per-machine settings
+.claude/settings.local.json
+
+# Output of the CLI demo
+/out/
+
+# Editors / OS
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+*.swp
