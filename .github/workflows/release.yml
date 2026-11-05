@@ -19,7 +19,7 @@ jobs:
       DTW_KEY_ALIAS: ${{ secrets.DTW_KEY_ALIAS }}
       DTW_KEY_PASSWORD: ${{ secrets.DTW_KEY_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: The signing secrets must exist
         env:
@@ -38,7 +38,7 @@ jobs:
             echo "::error::tag $GITHUB_REF_NAME does not match version $version in tauri.conf.json"; exit 1
           fi
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"

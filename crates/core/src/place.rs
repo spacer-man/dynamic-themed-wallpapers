@@ -333,11 +333,7 @@ impl<'a> Wikidata<'a> {
             ],
         );
         let resp: ClaimsResponse = get_json(self.http, &url, "wikidata claims")?;
-        let mut claims = resp
-            .claims
-            .into_iter()
-            .flat_map(|(_, v)| v)
-            .collect::<Vec<Claim>>();
+        let mut claims = resp.claims.into_values().flatten().collect::<Vec<Claim>>();
         // Preferred first, deprecated never.
         claims.retain(|c| c.rank != "deprecated");
         claims.sort_by_key(|c| if c.rank == "preferred" { 0 } else { 1 });

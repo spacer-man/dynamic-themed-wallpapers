@@ -21,7 +21,7 @@ jobs:
     name: Rust (fmt, clippy, tests)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
@@ -40,7 +40,7 @@ jobs:
     name: UI (svelte-check, tests, build)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - run: ./node_modules/.bin/svelte-check --tsconfig ./tsconfig.json
@@ -57,8 +57,8 @@ jobs:
       CARGO_PROFILE_DEV_STRIP: symbols
       CARGO_PROFILE_DEV_OPT_LEVEL: s
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
