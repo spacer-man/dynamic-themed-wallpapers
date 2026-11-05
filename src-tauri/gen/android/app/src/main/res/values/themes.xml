@@ -1,6 +1,7 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Base application theme. -->
     <style name="Theme.dynamic_themed_wallpapers" parent="Theme.Material3.DayNight.NoActionBar">
-        <!-- Customize your theme here. -->
+        <!-- Shown while the WebView starts (or restarts after the system recreated the activity), instead of white. -->
+        <item name="android:windowBackground">#F6F4F1</item>
     </style>
 </resources>

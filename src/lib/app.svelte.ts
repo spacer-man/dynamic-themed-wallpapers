@@ -7,6 +7,11 @@ import { AppError } from './types';
 import type { CacheInfo, HistoryEntry, Place, Route, Settings, Theme, Wallpaper } from './types';
 
 const HISTORY_PAGE = 60;
+const ROUTES: Route[] = ['today', 'place', 'look', 'schedule', 'history'];
+// The Android system recreates the WebView when the wallpaper changes (and in a few other cases).
+// Remembering where the user was and the last theme makes that invisible.
+const ROUTE_KEY = 'dtw-route';
+const THEME_KEY = 'dtw-theme';
 
 class App {
   route = $state<Route>('today');
@@ -34,7 +39,9 @@ class App {
     this.systemDark = mq.matches;
     // Browser-only helper for design work: ?route=look
     const r = !inTauri ? new URLSearchParams(location.search).get('route') : null;
-    if (r && ['today', 'place', 'look', 'schedule', 'history'].includes(r)) this.go(r as Route);
+    const saved = inTauri ? loadRoute() : null;
+    if (saved) this.go(saved);
+    if (r && (ROUTES as string[]).includes(r)) this.go(r as Route);
     mq.addEventListener('change', (e) => (this.systemDark = e.matches));
     try {
       this.settings = await api.getSettings();
@@ -57,6 +64,11 @@ class App {
 
   go(route: Route) {
     this.route = route;
+    try {
+      localStorage.setItem(ROUTE_KEY, route);
+    } catch {
+      // storage unavailable: just not remembered
+    }
     if (route === 'history') void this.loadHistory();
     if (route === 'schedule') void this.loadCache();
   }
@@ -203,4 +215,32 @@ export function applyTheme(theme: Theme | null, dark: boolean) {
     else root.style.removeProperty(k);
   }
   root.dataset.theme = dark ? 'dark' : 'light';
+  if (theme) {
+    try {
+      localStorage.setItem(THEME_KEY, JSON.stringify({ theme, dark }));
+    } catch {
+      // not remembered
+    }
+  }
+}
+
+function loadRoute(): Route | null {
+  try {
+    const r = localStorage.getItem(ROUTE_KEY);
+    return r && (ROUTES as string[]).includes(r) ? (r as Route) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Paint the last known theme before the first render, so a reload does not flash default colours. */
+export function restoreTheme() {
+  try {
+    const raw = localStorage.getItem(THEME_KEY);
+    if (!raw) return;
+    const { theme, dark } = JSON.parse(raw) as { theme: Theme; dark: boolean };
+    applyTheme(theme, dark);
+  } catch {
+    // nothing remembered or unreadable: the stylesheet defaults apply
+  }
 }
