@@ -39,3 +39,4 @@ src-tauri/gen/schemas/
 !.vscode/extensions.json
 .DS_Store
 *.swp
+.gradle-home/

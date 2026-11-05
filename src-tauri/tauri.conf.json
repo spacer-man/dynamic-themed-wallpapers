@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "app.dynamicthemedwallpapers",
   "build": {
-    "beforeDevCommand": "bun run dev",
+    "beforeDevCommand": "./node_modules/.bin/vite",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run build",
+    "beforeBuildCommand": "./node_modules/.bin/vite build",
     "frontendDist": "../dist"
   },
   "app": {

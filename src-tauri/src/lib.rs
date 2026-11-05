@@ -2,6 +2,8 @@
 //! blocking work (network, image decoding, SQLite) runs on the blocking thread pool so the UI
 //! never freezes.
 
+mod wallpaper_bridge;
+
 use base64::Engine as _;
 use serde::Serialize;
 use tauri::Manager;
@@ -149,14 +151,19 @@ async fn current_wallpaper(
 
 #[tauri::command]
 async fn change_now(
+    app: tauri::AppHandle,
     engine: tauri::State<'_, Engine>,
     system_dark: bool,
     screen: ScreenDto,
 ) -> CmdResult<Option<WallpaperDto>> {
     let e = engine.inner().clone();
     blocking(move || {
-        e.change_now(screen.to_screen(), system_dark, Engine::now())?;
-        // TODO(stage 7): on Android, hand `Shown::image_path` and the caption to the wallpaper plugin.
+        let shown = e.change_now(screen.to_screen(), system_dark, Engine::now())?;
+        app.state::<wallpaper_bridge::Bridge>().set_wallpaper(
+            &shown.image_path,
+            &shown.caption,
+            &shown.credit,
+        )?;
         e.current_wallpaper(system_dark)?.map(to_dto).transpose()
     })
     .await
@@ -208,6 +215,7 @@ fn theme_for(engine: tauri::State<'_, Engine>, palette: Vec<Swatch>, dark: bool)
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(wallpaper_bridge::plugin())
         .setup(|app| {
             let data = app.path().app_data_dir()?;
             let cache = app.path().app_cache_dir()?;
