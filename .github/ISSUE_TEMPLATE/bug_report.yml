@@ -1,0 +1,25 @@
+name: Bug report
+description: Something does not work
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: input
+    id: device
+    attributes:
+      label: Phone model and Android version
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs (optional)
+      description: "Do not paste anything private. `adb logcat` can contain personal data: check it first."
