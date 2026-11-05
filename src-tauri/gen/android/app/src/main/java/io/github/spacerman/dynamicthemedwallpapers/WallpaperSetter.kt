@@ -1,4 +1,4 @@
-package app.dynamicthemedwallpapers
+package io.github.spacerman.dynamicthemedwallpapers
 
 import android.app.WallpaperManager
 import android.content.Context

@@ -12,11 +12,10 @@ use crate::error::{Error, Result};
 
 /// Sent with every request. Wikimedia's policy asks for an identifiable client with a way to
 /// reach the maintainers; it deliberately contains nothing about the user or the device.
-// TODO(open-question): Q3 — replace OWNER once the public repository exists.
 pub const USER_AGENT: &str = concat!(
     "dynamic-themed-wallpapers/",
     env!("CARGO_PKG_VERSION"),
-    " (+https://github.com/OWNER/dynamic-themed-wallpapers)"
+    " (+https://github.com/spacer-man/dynamic-themed-wallpapers)"
 );
 
 /// JSON API responses are small; anything bigger is a bug or an attack.

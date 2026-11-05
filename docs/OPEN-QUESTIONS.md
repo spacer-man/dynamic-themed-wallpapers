@@ -8,12 +8,8 @@ Decisions made without the owner during autonomous work. Each one has a recommen
 Commits are created with the global git identity of the machine, which includes a personal e-mail.
 That is commit metadata, not code, but it becomes public on push.
 
-- **A (recommended, not applied):** before the first public push, set a GitHub noreply address in this repo
-  (`git config user.email <id>+<login>@users.noreply.github.com`) and rewrite history with
-  `git rebase -r --root --exec 'git commit --amend --no-edit --reset-author'`.
-- B: keep it as is.
-
-Nothing was changed — rewriting identity is the owner's call.
+**Resolved:** before the first public push the history was rewritten so every commit uses the GitHub noreply
+address (`<id>+<login>@users.noreply.github.com`).
 
 ## Q2. Crate name `wallpaper-core` instead of `core`
 
@@ -23,9 +19,8 @@ The plan says `cargo run -p core`. A crate named `core` collides with Rust's bui
 
 ## Q3. Repository URL in the User-Agent
 
-Wikimedia asks API clients to send a User-Agent with contact info. It currently says
-`https://github.com/OWNER/dynamic-themed-wallpapers` (also in `Cargo.toml` `repository`).
-Replace `OWNER` once the public repo exists — search for `TODO(open-question): Q3`.
+Wikimedia asks API clients to send a User-Agent with contact info. **Resolved:** it points to
+`https://github.com/spacer-man/dynamic-themed-wallpapers` (also in `Cargo.toml` `repository`).
 
 ## Q4. The sandbox cannot compile C code → pure-Rust choices tonight
 
@@ -69,9 +64,9 @@ a desktop UI field would need an OS keyring (e.g. `keyring` crate), which pulls 
 
 ## Q9. App identifier
 
-`app.dynamicthemedwallpapers` (in `src-tauri/tauri.conf.json`) is a placeholder reverse-domain id. It becomes the
-Android package name and cannot change after a Play Store release. Pick the final one before the first signed build
-(e.g. one based on a domain or GitHub org you own).
+**Resolved:** `io.github.spacerman.dynamicthemedwallpapers` (in `src-tauri/tauri.conf.json`, the Kotlin packages and the JNI
+symbol name in `src-tauri/src/worker.rs`). It is the Android
+package name and must not change once releases are out.
 
 ## Q10. TypeScript pinned to 6
 

@@ -96,7 +96,7 @@ mod jni_entry {
 
     /// Kotlin: `object NativeEngine { external fun run(op, dataDir, cacheDir, width, height, systemDark): String }`
     #[no_mangle]
-    pub extern "system" fn Java_app_dynamicthemedwallpapers_NativeEngine_run(
+    pub extern "system" fn Java_io_github_spacerman_dynamicthemedwallpapers_NativeEngine_run(
         mut env: JNIEnv,
         _this: JObject,
         op: JString,

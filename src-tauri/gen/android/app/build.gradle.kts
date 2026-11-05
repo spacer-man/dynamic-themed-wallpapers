@@ -16,10 +16,10 @@ val tauriProperties = Properties().apply {
 
 android {
     compileSdk = 36
-    namespace = "app.dynamicthemedwallpapers"
+    namespace = "io.github.spacerman.dynamicthemedwallpapers"
     defaultConfig {
         manifestPlaceholders["usesCleartextTraffic"] = "false"
-        applicationId = "app.dynamicthemedwallpapers"
+        applicationId = "io.github.spacerman.dynamicthemedwallpapers"
         minSdk = 24
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()

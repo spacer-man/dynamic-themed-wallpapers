@@ -1,4 +1,4 @@
-package app.dynamicthemedwallpapers
+package io.github.spacerman.dynamicthemedwallpapers
 
 import android.os.Bundle
 import androidx.activity.enableEdgeToEdge

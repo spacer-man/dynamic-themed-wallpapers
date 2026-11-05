@@ -83,8 +83,10 @@ pub fn plugin() -> TauriPlugin<tauri::Wry> {
         .setup(|app, api| {
             #[cfg(target_os = "android")]
             {
-                let handle =
-                    api.register_android_plugin("app.dynamicthemedwallpapers", "WallpaperPlugin")?;
+                let handle = api.register_android_plugin(
+                    "io.github.spacerman.dynamicthemedwallpapers",
+                    "WallpaperPlugin",
+                )?;
                 app.manage(Bridge(handle));
             }
             #[cfg(not(target_os = "android"))]
