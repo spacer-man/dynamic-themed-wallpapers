@@ -29,3 +29,9 @@ Thanks for wanting to help!
 `src-tauri/gen/android` is committed because it contains hand-written code (worker, plugin, manifest changes).
 **Never run `tauri android init` on top of it.** To pick up template changes, generate into a scratch directory and port
 the diff by hand.
+
+Local changes to generated files that must survive a regeneration: `buildSrc/.../BuildTask.kt` runs the Tauri CLI by
+path (`../node_modules/@tauri-apps/cli/tauri.js`) instead of `node tauri`, which only works through a package-manager
+runner; `app/build.gradle.kts` has the release signing config read from `DTW_*` environment variables.
+
+Releases: see [docs/releasing.md](docs/releasing.md).
