@@ -3,6 +3,7 @@
 //! never freezes.
 
 mod wallpaper_bridge;
+pub mod worker;
 
 use base64::Engine as _;
 use serde::Serialize;
@@ -107,11 +108,18 @@ async fn get_settings(engine: tauri::State<'_, Engine>) -> CmdResult<Settings> {
 
 #[tauri::command]
 async fn save_settings(
+    app: tauri::AppHandle,
     engine: tauri::State<'_, Engine>,
     settings: Settings,
 ) -> CmdResult<Settings> {
     let e = engine.inner().clone();
-    blocking(move || e.save_settings(settings)).await
+    blocking(move || {
+        let saved = e.save_settings(settings)?;
+        app.state::<wallpaper_bridge::Bridge>()
+            .schedule(&saved.change_time, saved.wifi_only)?;
+        Ok(saved)
+    })
+    .await
 }
 
 #[tauri::command]
@@ -219,7 +227,14 @@ pub fn run() {
         .setup(|app| {
             let data = app.path().app_data_dir()?;
             let cache = app.path().app_cache_dir()?;
-            app.manage(Engine::new(data.join("app.db"), cache.join("wallpapers")));
+            let engine = worker::engine_at(&data, &cache);
+            // Make sure the daily job exists (first launch, or after the OS cleared it).
+            if let Ok(s) = engine.settings() {
+                let _ = app
+                    .state::<wallpaper_bridge::Bridge>()
+                    .schedule(&s.change_time, s.wifi_only);
+            }
+            app.manage(engine);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

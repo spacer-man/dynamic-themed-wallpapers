@@ -705,6 +705,7 @@ name = "dynamic-themed-wallpapers"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "jni",
  "serde",
  "serde_json",
  "tauri",

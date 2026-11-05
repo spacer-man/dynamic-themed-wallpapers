@@ -45,6 +45,32 @@ impl Bridge {
     pub fn set_wallpaper(&self, _image: &Path, _caption: &str, _credit: &str) -> Result<(), Error> {
         Ok(())
     }
+
+    /// (Re)schedule the daily change and the prefetch job. Safe to call repeatedly:
+    /// WorkManager replaces the existing jobs.
+    #[cfg(target_os = "android")]
+    pub fn schedule(&self, time: &str, wifi_only: bool) -> Result<(), Error> {
+        self.0
+            .run_mobile_plugin::<serde_json::Value>(
+                "scheduleDaily",
+                ScheduleArgs { time, wifi_only },
+            )
+            .map(|_| ())
+            .map_err(|e| Error::Config(format!("scheduling failed: {e}")))
+    }
+
+    #[cfg(not(target_os = "android"))]
+    pub fn schedule(&self, _time: &str, _wifi_only: bool) -> Result<(), Error> {
+        Ok(())
+    }
+}
+
+#[cfg(target_os = "android")]
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ScheduleArgs<'a> {
+    time: &'a str,
+    wifi_only: bool,
 }
 
 pub fn plugin() -> TauriPlugin<tauri::Wry> {

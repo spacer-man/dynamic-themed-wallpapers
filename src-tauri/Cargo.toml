@@ -27,3 +27,6 @@ default = ["tls-ring"]
 tls-ring = ["wallpaper-core/tls-ring"]
 tls-graviola = ["wallpaper-core/tls-graviola"]
 sqlite-bundled = ["wallpaper-core/sqlite-bundled"]
+
+[target.'cfg(target_os = "android")'.dependencies]
+jni = "0.21"

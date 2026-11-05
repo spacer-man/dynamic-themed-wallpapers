@@ -77,3 +77,16 @@ Android package name and cannot change after a Play Store release. Pick the fina
 
 `svelte-check` 4.x does not work with TypeScript 7 yet (it asks for a `--tsgo` setup), so `typescript` is pinned to
 `~6` in `package.json`. Revisit when svelte-check supports TS 7 directly.
+
+## Q11. No BootReceiver; background job not yet verified on a device
+
+The plan lists a `BootReceiver`. WorkManager already persists periodic work across reboots and app
+updates, so a receiver would only duplicate that and add a `RECEIVE_BOOT_COMPLETED` permission.
+**Recommended (applied):** no receiver; the daily and prefetch jobs are (re)scheduled from `save_settings`
+and at app start.
+
+Not yet verified (needs a Gradle build and a device): that the Kotlin compiles, that `Scheduler.schedule`
+works when called from the Rust `setup` hook before the activity is up (errors there are ignored; the
+next `save_settings` schedules it), and that the worker never starts a WebView (check the process log).
+
+The Unsplash key is not passed to the worker yet (see Q8), so background changes use Commons only.
