@@ -1,6 +1,15 @@
-# Dynamic Themed Wallpapers
+# 🖼️ Dynamic Themed Wallpapers
 
 [Русская версия](README.ru.md)
+
+[![CI](https://img.shields.io/github/actions/workflow/status/spacer-man/dynamic-themed-wallpapers/ci.yml?branch=main&label=CI)](https://github.com/spacer-man/dynamic-themed-wallpapers/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/spacer-man/dynamic-themed-wallpapers?include_prereleases&label=release)](https://github.com/spacer-man/dynamic-themed-wallpapers/releases/latest)
+[![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](#license)
+[![Android 7.0+](https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white)](#install)
+[![Tauri v2](https://img.shields.io/badge/Tauri-v2-24C8D8?logo=tauri&logoColor=white)](https://v2.tauri.app/)
+[![Rust](https://img.shields.io/badge/Rust-engine-DEA584?logo=rust&logoColor=black)](crates/core)
+[![Svelte 5](https://img.shields.io/badge/Svelte-5-FF3E00?logo=svelte&logoColor=white)](https://svelte.dev/)
+![No telemetry](https://img.shields.io/badge/telemetry-none-brightgreen)
 
 An Android app that sets one beautiful photo of a place you choose as your wallpaper every day,
 with a small caption saying what the place is.
