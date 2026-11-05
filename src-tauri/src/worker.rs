@@ -26,6 +26,10 @@ pub enum Outcome {
         path: String,
         caption: String,
         credit: String,
+        /// Vertical centre of the text block, percent of the screen height.
+        y: u8,
+        /// "left", "center" or "right".
+        align: wallpaper_core::service::CaptionAlign,
     },
     /// Nothing to install (prefetch ran, or the queue was topped up).
     Done { added: u32 },
@@ -53,6 +57,8 @@ pub fn run(
                 path: shown.image_path.to_string_lossy().into_owned(),
                 caption: shown.caption,
                 credit: shown.credit,
+                y: shown.layout.y,
+                align: shown.layout.align,
             },
             Err(e) => classify(e),
         },
@@ -173,9 +179,12 @@ mod tests {
             path: "/a.jpg".into(),
             caption: "Kyoto".into(),
             credit: "Someone, CC BY".into(),
+            y: 94,
+            align: wallpaper_core::service::CaptionAlign::Left,
         })
         .unwrap();
         assert!(json.contains(r#""status":"changed""#));
         assert!(json.contains(r#""path":"/a.jpg""#));
+        assert!(json.contains(r#""y":94"#) && json.contains(r#""align":"left""#));
     }
 }

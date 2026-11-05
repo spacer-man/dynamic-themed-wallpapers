@@ -22,7 +22,13 @@ object NativeEngine {
     ): String
 
     sealed class Outcome {
-        data class Changed(val path: String, val caption: String, val credit: String) : Outcome()
+        data class Changed(
+            val path: String,
+            val caption: String,
+            val credit: String,
+            val y: Int,
+            val align: String,
+        ) : Outcome()
         data class Done(val added: Int) : Outcome()
         data class Retry(val message: String) : Outcome()
         data class Failed(val message: String) : Outcome()
@@ -44,7 +50,13 @@ object NativeEngine {
             ),
         )
         return when (json.optString("status")) {
-            "changed" -> Outcome.Changed(json.getString("path"), json.optString("caption"), json.optString("credit"))
+            "changed" -> Outcome.Changed(
+                json.getString("path"),
+                json.optString("caption"),
+                json.optString("credit"),
+                json.optInt("y", WallpaperSetter.DEFAULT_Y),
+                json.optString("align", "left"),
+            )
             "done" -> Outcome.Done(json.optInt("added"))
             "retry" -> Outcome.Retry(json.optString("message"))
             else -> Outcome.Failed(json.optString("message", "unknown error"))

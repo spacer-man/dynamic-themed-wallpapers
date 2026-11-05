@@ -2,6 +2,7 @@
 
 export type Tone = 'any' | 'dark' | 'light';
 export type Lang = 'auto' | 'ru' | 'en';
+export type CaptionAlign = 'left' | 'center' | 'right';
 export type Route = 'today' | 'place' | 'look' | 'schedule' | 'history';
 
 export interface Settings {
@@ -14,6 +15,11 @@ export interface Settings {
   cache_mb: number;
   unsplash_enabled: boolean;
   lang: Lang;
+  /** Draw the place name and credit on the wallpaper. */
+  caption_enabled: boolean;
+  /** Vertical centre of the caption, percent of the screen height (3 top … 97 bottom). */
+  caption_y: number;
+  caption_align: CaptionAlign;
 }
 
 export interface GeoPoint {

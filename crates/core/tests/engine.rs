@@ -7,7 +7,7 @@ use image::{codecs::jpeg::JpegEncoder, DynamicImage, Rgb, RgbImage};
 use wallpaper_core::http::fixture::FixtureHttp;
 use wallpaper_core::pipeline::{self, Screen};
 use wallpaper_core::score::ToneFilter;
-use wallpaper_core::service::{Engine, Settings};
+use wallpaper_core::service::{CaptionAlign, Engine, Settings, DEFAULT_CAPTION_Y};
 
 const SCREEN: Screen = Screen {
     width: 540,
@@ -297,4 +297,63 @@ fn changing_the_radius_drops_the_queue_but_changing_tone_does_not() {
         })
         .unwrap();
     assert_eq!(engine.cache_info().unwrap().ready, 0);
+}
+
+#[test]
+fn caption_layout_is_configurable_sanitised_and_reapplied_without_a_new_photo() {
+    let (engine, _) = engine("caption");
+    engine.select_place("Q34600", "en").unwrap();
+    assert!(
+        engine.current_shown().unwrap().is_none(),
+        "nothing shown yet"
+    );
+
+    let first = engine.change_now(SCREEN, false, NOW).unwrap();
+    assert_eq!(first.layout.y, DEFAULT_CAPTION_Y);
+    assert_eq!(first.layout.align, CaptionAlign::Left);
+    assert!(!first.caption.is_empty());
+
+    // Move the caption to the top, centred: re-applying shows the same photo, new layout.
+    let saved = engine
+        .save_settings(Settings {
+            caption_y: 6,
+            caption_align: CaptionAlign::Center,
+            ..engine.settings().unwrap()
+        })
+        .unwrap();
+    assert_eq!(saved.caption_y, 6);
+    let again = engine.current_shown().unwrap().unwrap();
+    assert_eq!(again.entry.candidate.id, first.entry.candidate.id);
+    assert_eq!(again.image_path, first.image_path);
+    assert_eq!(
+        (again.layout.y, again.layout.align),
+        (6, CaptionAlign::Center)
+    );
+    assert_eq!(again.caption, first.caption);
+
+    // Turning the caption off blanks the text but keeps the photo.
+    engine
+        .save_settings(Settings {
+            caption_enabled: false,
+            ..engine.settings().unwrap()
+        })
+        .unwrap();
+    let bare = engine.current_shown().unwrap().unwrap();
+    assert!(bare.caption.is_empty() && bare.credit.is_empty());
+
+    // Out-of-range values from the UI are pulled back, so the text cannot leave the screen.
+    let wild = engine
+        .save_settings(Settings {
+            caption_y: 255,
+            ..engine.settings().unwrap()
+        })
+        .unwrap();
+    assert_eq!(wild.caption_y, 97);
+    let wild = engine
+        .save_settings(Settings {
+            caption_y: 0,
+            ..engine.settings().unwrap()
+        })
+        .unwrap();
+    assert_eq!(wild.caption_y, 3);
 }

@@ -2,7 +2,8 @@
   import { app } from '../lib/app.svelte';
   import { rgbToHex } from '../lib/color';
   import { t } from '../lib/i18n.svelte';
-  import type { Lang, Tone } from '../lib/types';
+  import type { CaptionAlign, Lang, Tone } from '../lib/types';
+  import CaptionPreview from '../lib/components/CaptionPreview.svelte';
   import Segmented from '../lib/components/Segmented.svelte';
   import Toggle from '../lib/components/Toggle.svelte';
 
@@ -14,6 +15,16 @@
     { value: 'dark', label: t('look.tone.dark') },
     { value: 'light', label: t('look.tone.light') },
   ]);
+  const aligns = $derived<{ value: CaptionAlign; label: string }[]>([
+    { value: 'left', label: t('look.align.left') },
+    { value: 'center', label: t('look.align.center') },
+    { value: 'right', label: t('look.align.right') },
+  ]);
+
+  // While the slider is dragged only the preview moves; the wallpaper is redone on release.
+  let draftY = $state<number | null>(null);
+  const shownY = $derived(draftY ?? s?.caption_y ?? 94);
+
   const langs = $derived<{ value: Lang; label: string }[]>([
     { value: 'auto', label: t('look.lang.auto') },
     { value: 'ru', label: 'Русский' },
@@ -57,6 +68,50 @@
     {/if}
 
     <div class="card">
+      <span class="label">{t('look.caption')}</span>
+      <Toggle
+        checked={s.caption_enabled}
+        label={t('look.caption.show')}
+        hint={t('look.caption.show.hint')}
+        onchange={(v) => app.saveCaption({ caption_enabled: v })}
+      />
+      {#if s.caption_enabled}
+        <div class="caption-editor">
+          <CaptionPreview image={app.wallpaper?.image ?? null} y={shownY} align={s.caption_align} enabled />
+          <div class="controls">
+            <label class="slider">
+              <span class="label">{t('look.caption.position')}</span>
+              <input
+                type="range"
+                min="3"
+                max="97"
+                step="1"
+                value={shownY}
+                aria-label={t('look.caption.position')}
+                oninput={(e) => (draftY = e.currentTarget.valueAsNumber)}
+                onchange={async (e) => {
+                  const y = e.currentTarget.valueAsNumber;
+                  await app.saveCaption({ caption_y: y });
+                  draftY = null;
+                }}
+              />
+              <span class="ends"><span>{t('look.caption.top')}</span><span>{t('look.caption.bottom')}</span></span>
+              <span class="hint">{t('look.caption.position.hint')}</span>
+            </label>
+          </div>
+        </div>
+        <div class="align">
+          <span class="label">{t('look.align')}</span>
+          <Segmented
+            options={aligns}
+            value={s.caption_align}
+            onchange={(caption_align) => app.saveCaption({ caption_align })}
+          />
+        </div>
+      {/if}
+    </div>
+
+    <div class="card">
       <span class="label">{t('look.language')}</span>
       <Segmented options={langs} value={s.lang} onchange={(lang) => app.saveSettings({ lang })} />
     </div>
@@ -70,6 +125,45 @@
     gap: 3px;
     border-radius: var(--radius-sm);
     overflow: hidden;
+  }
+
+  .caption-editor {
+    display: flex;
+    gap: var(--space-4);
+    align-items: flex-start;
+  }
+
+  .controls {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+  }
+
+  .slider {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .slider input {
+    width: 100%;
+    min-height: 44px;
+    accent-color: var(--accent);
+  }
+
+  .ends {
+    display: flex;
+    justify-content: space-between;
+    font-size: var(--fs-xs);
+    color: var(--muted);
+  }
+
+  .align {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
   }
 
   .swatch {

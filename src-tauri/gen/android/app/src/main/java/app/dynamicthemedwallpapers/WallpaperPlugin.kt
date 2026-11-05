@@ -13,6 +13,8 @@ class SetWallpaperArgs {
     lateinit var path: String
     var caption: String = ""
     var credit: String = ""
+    var y: Int = WallpaperSetter.DEFAULT_Y
+    var align: String = "left"
 }
 
 @InvokeArg
@@ -33,7 +35,7 @@ class WallpaperPlugin(private val activity: Activity) : Plugin(activity) {
     fun setWallpaper(invoke: Invoke) {
         try {
             val args = invoke.parseArgs(SetWallpaperArgs::class.java)
-            WallpaperSetter.set(activity, args.path, args.caption, args.credit)
+            WallpaperSetter.set(activity, args.path, args.caption, args.credit, args.y, args.align)
             invoke.resolve()
         } catch (e: Exception) {
             invoke.reject(e.message ?: e.javaClass.simpleName)

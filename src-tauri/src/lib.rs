@@ -167,12 +167,27 @@ async fn change_now(
     let e = engine.inner().clone();
     blocking(move || {
         let shown = e.change_now(screen.to_screen(), system_dark, Engine::now())?;
-        app.state::<wallpaper_bridge::Bridge>().set_wallpaper(
-            &shown.image_path,
-            &shown.caption,
-            &shown.credit,
-        )?;
+        app.state::<wallpaper_bridge::Bridge>()
+            .set_wallpaper(&shown)?;
         e.current_wallpaper(system_dark)?.map(to_dto).transpose()
+    })
+    .await
+}
+
+/// Install the current photo again, e.g. after the caption position changed. No new photo is taken.
+#[tauri::command]
+async fn reapply_wallpaper(
+    app: tauri::AppHandle,
+    engine: tauri::State<'_, Engine>,
+) -> CmdResult<bool> {
+    let e = engine.inner().clone();
+    blocking(move || match e.current_shown()? {
+        Some(shown) => {
+            app.state::<wallpaper_bridge::Bridge>()
+                .set_wallpaper(&shown)?;
+            Ok(true)
+        }
+        None => Ok(false),
     })
     .await
 }
@@ -245,6 +260,7 @@ pub fn run() {
             select_place,
             current_wallpaper,
             change_now,
+            reapply_wallpaper,
             feedback,
             history,
             cache_info,

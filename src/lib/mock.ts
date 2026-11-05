@@ -115,6 +115,9 @@ const DEFAULT_SETTINGS: Settings = {
   cache_mb: 150,
   unsplash_enabled: false,
   lang: 'auto',
+  caption_enabled: true,
+  caption_y: 94,
+  caption_align: 'left',
 };
 
 const KEY = 'dtw-mock-db';
@@ -197,6 +200,8 @@ function wallpaper(dark: boolean): Wallpaper | null {
 
 export async function mockCall(cmd: string, a: Record<string, unknown>): Promise<unknown> {
   switch (cmd) {
+    case 'reapply_wallpaper':
+      return true;
     case 'get_settings':
       return db.settings;
     case 'save_settings': {

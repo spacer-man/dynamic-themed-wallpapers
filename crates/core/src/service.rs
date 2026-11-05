@@ -31,6 +31,27 @@ const RECENT_HASHES: u32 = 90;
 const MAX_ROUNDS: u64 = 4;
 const ANALYSIS_THREADS: usize = 4;
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CaptionAlign {
+    #[default]
+    Left,
+    Center,
+    Right,
+}
+
+/// Where the caption goes on the wallpaper. `y` is the vertical centre of the text block as a
+/// percentage of the screen height (0 = top, 100 = bottom).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CaptionLayout {
+    pub y: u8,
+    pub align: CaptionAlign,
+}
+
+/// Default vertical position: the bottom edge, as before the position became configurable.
+pub const DEFAULT_CAPTION_Y: u8 = 94;
+const CAPTION_Y_RANGE: (u8, u8) = (3, 97);
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
@@ -47,6 +68,11 @@ pub struct Settings {
     pub unsplash_enabled: bool,
     /// "auto", "ru" or "en".
     pub lang: String,
+    /// Draw the place name and credit on the wallpaper at all.
+    pub caption_enabled: bool,
+    /// See [`CaptionLayout::y`]. Lets the user keep the text clear of home screen icons.
+    pub caption_y: u8,
+    pub caption_align: CaptionAlign,
 }
 
 impl Default for Settings {
@@ -60,6 +86,9 @@ impl Default for Settings {
             cache_mb: (DEFAULT_CACHE_BUDGET_BYTES / 1024 / 1024) as u32,
             unsplash_enabled: false,
             lang: "auto".into(),
+            caption_enabled: true,
+            caption_y: DEFAULT_CAPTION_Y,
+            caption_align: CaptionAlign::Left,
         }
     }
 }
@@ -78,7 +107,15 @@ impl Settings {
         if !["auto", "ru", "en"].contains(&self.lang.as_str()) {
             self.lang = "auto".into();
         }
+        self.caption_y = self.caption_y.clamp(CAPTION_Y_RANGE.0, CAPTION_Y_RANGE.1);
         self
+    }
+
+    pub fn caption_layout(&self) -> CaptionLayout {
+        CaptionLayout {
+            y: self.caption_y,
+            align: self.caption_align,
+        }
     }
 
     pub fn effective_tone(&self, system_dark: bool) -> ToneFilter {
@@ -135,6 +172,25 @@ pub struct Shown {
     /// "<place>" caption line and credit, ready to draw on the wallpaper.
     pub caption: String,
     pub credit: String,
+    /// Where to draw them. Both strings are empty when the user turned the caption off.
+    pub layout: CaptionLayout,
+}
+
+impl Shown {
+    fn new(settings: &Settings, entry: HistoryEntry, image_path: PathBuf) -> Self {
+        let (caption, credit) = if settings.caption_enabled {
+            (caption_for(&entry.candidate), entry.candidate.credit_line())
+        } else {
+            (String::new(), String::new())
+        };
+        Self {
+            entry,
+            image_path,
+            caption,
+            credit,
+            layout: settings.caption_layout(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -439,12 +495,21 @@ impl Engine {
                 }
             }
         }
-        Ok(Shown {
-            caption: caption_for(&ready.candidate),
-            credit: ready.candidate.credit_line(),
-            entry,
-            image_path: ready.path,
-        })
+        Ok(Shown::new(&settings, entry, ready.path))
+    }
+
+    /// The wallpaper that is currently set, ready to be installed again (for example after the
+    /// caption position changed). `None` when nothing was shown yet or its file is gone.
+    pub fn current_shown(&self) -> Result<Option<Shown>> {
+        let store = self.store()?;
+        let Some(entry) = store.current()? else {
+            return Ok(None);
+        };
+        let settings = self.settings()?;
+        let path = self
+            .cache(&store, &settings)?
+            .path_of(&entry.candidate.id)?;
+        Ok(path.map(|p| Shown::new(&settings, entry, p)))
     }
 
     /// Top up the queue only if it runs low (called by the background job on Wi-Fi + charging).

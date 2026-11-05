@@ -21,14 +21,21 @@ object WallpaperSetter {
     }
 
     /** Throws on any failure; the caller reports it. */
-    fun set(context: Context, path: String, caption: String, credit: String) {
+    fun set(
+        context: Context,
+        path: String,
+        caption: String,
+        credit: String,
+        y: Int = DEFAULT_Y,
+        align: String = "left",
+    ) {
         val wm = WallpaperManager.getInstance(context)
         check(wm.isWallpaperSupported && wm.isSetWallpaperAllowed) { "wallpaper changes are not allowed on this device" }
 
         val opts = BitmapFactory.Options().apply { inMutable = true }
         val bmp = BitmapFactory.decodeFile(path, opts) ?: error("cannot decode $path")
         try {
-            drawCaption(bmp, caption, credit)
+            drawCaption(bmp, caption, credit, y, align)
             // No crop hint: the Rust side already cropped the photo to the screen.
             wm.setBitmap(bmp, null, true, WallpaperManager.FLAG_SYSTEM or WallpaperManager.FLAG_LOCK)
         } finally {
@@ -37,42 +44,57 @@ object WallpaperSetter {
     }
 
     /**
-     * Small text in the bottom-left corner, above the gesture area. The colour follows the
-     * luminance of the pixels underneath, with a soft shadow, so it stays readable on any photo.
+     * Small text block whose vertical centre sits at [centerPercent] of the screen height
+     * (the user moves it clear of home screen icons) and which is aligned left, centre or right.
+     * The colour follows the luminance of the pixels underneath, with a soft shadow, so it stays
+     * readable on any photo.
      */
-    private fun drawCaption(bmp: Bitmap, caption: String, credit: String) {
+    private fun drawCaption(bmp: Bitmap, caption: String, credit: String, centerPercent: Int, align: String) {
         if (caption.isBlank() && credit.isBlank()) return
         val w = bmp.width
         val h = bmp.height
         val unit = w / 100f // 1% of the width: scales with the screen
         val margin = 5f * unit
-        val bottom = h - 9f * unit
 
         val lines = listOfNotNull(
             caption.takeIf { it.isNotBlank() }?.let { it to 3.6f * unit },
             credit.takeIf { it.isNotBlank() }?.let { it to 2.6f * unit },
         )
         val total = lines.sumOf { (it.second * 1.35f).toDouble() }.toFloat()
-        val dark = isDark(bmp, margin.toInt(), (bottom - total).toInt(), (w - margin).toInt(), bottom.toInt())
+        // Keep the whole block on the screen whatever the percentage is.
+        val top = (h * centerPercent.coerceIn(0, 100) / 100f - total / 2f)
+            .coerceIn(margin, (h - margin - total).coerceAtLeast(margin))
+        val bottom = top + total
+        val dark = isDark(bmp, margin.toInt(), top.toInt(), (w - margin).toInt(), bottom.toInt())
         val ink = if (dark) Color.WHITE else Color.BLACK
         val shadow = if (dark) Color.argb(160, 0, 0, 0) else Color.argb(140, 255, 255, 255)
 
+        val (x, textAlign) = when (align) {
+            "center" -> w / 2f to Paint.Align.CENTER
+            "right" -> (w - margin) to Paint.Align.RIGHT
+            else -> margin to Paint.Align.LEFT
+        }
+
         val canvas = Canvas(bmp)
-        var y = bottom - total
+        var y = top
         for ((i, line) in lines.withIndex()) {
             val (text, size) = line
             val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = ink
                 textSize = size
+                this.textAlign = textAlign
                 typeface = if (i == 0) Typeface.create(Typeface.DEFAULT, Typeface.BOLD) else Typeface.DEFAULT
                 alpha = if (i == 0) 255 else 200
                 setShadowLayer(size * 0.35f, 0f, size * 0.08f, shadow)
             }
             y += size * 1.1f
-            canvas.drawText(ellipsize(text, paint, w - 2 * margin), margin, y, paint)
+            canvas.drawText(ellipsize(text, paint, w - 2 * margin), x, y, paint)
             y += size * 0.25f
         }
     }
+
+    /** Default vertical position, percent of the screen height (matches the Rust default). */
+    const val DEFAULT_Y = 94
 
     private fun ellipsize(text: String, paint: Paint, maxWidth: Float): String {
         if (paint.measureText(text) <= maxWidth) return text

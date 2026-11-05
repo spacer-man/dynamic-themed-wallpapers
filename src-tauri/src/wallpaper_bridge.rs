@@ -1,9 +1,9 @@
 //! Bridge to the Kotlin `WallpaperPlugin`. On desktop there is no wallpaper to set, so the
 //! bridge reports "unsupported" and the rest of the app works unchanged.
 
-use std::path::Path;
 use tauri::plugin::{Builder, TauriPlugin};
 use tauri::Manager;
+use wallpaper_core::service::Shown;
 use wallpaper_core::Error;
 
 #[cfg(target_os = "android")]
@@ -18,14 +18,17 @@ struct SetArgs<'a> {
     path: &'a str,
     caption: &'a str,
     credit: &'a str,
+    y: u8,
+    align: wallpaper_core::service::CaptionAlign,
 }
 
 impl Bridge {
-    /// Install `image` as home and lock screen wallpaper, drawing the caption on it.
-    /// Blocking: call from the blocking pool, not from the UI thread.
+    /// Install the photo as home and lock screen wallpaper, drawing the caption where the
+    /// user's layout says. Blocking: call from the blocking pool, not from the UI thread.
     #[cfg(target_os = "android")]
-    pub fn set_wallpaper(&self, image: &Path, caption: &str, credit: &str) -> Result<(), Error> {
-        let path = image
+    pub fn set_wallpaper(&self, shown: &Shown) -> Result<(), Error> {
+        let path = shown
+            .image_path
             .to_str()
             .ok_or_else(|| Error::Config("wallpaper path is not valid UTF-8".into()))?;
         self.0
@@ -33,8 +36,10 @@ impl Bridge {
                 "setWallpaper",
                 SetArgs {
                     path,
-                    caption,
-                    credit,
+                    caption: &shown.caption,
+                    credit: &shown.credit,
+                    y: shown.layout.y,
+                    align: shown.layout.align,
                 },
             )
             .map(|_| ())
@@ -42,7 +47,7 @@ impl Bridge {
     }
 
     #[cfg(not(target_os = "android"))]
-    pub fn set_wallpaper(&self, _image: &Path, _caption: &str, _credit: &str) -> Result<(), Error> {
+    pub fn set_wallpaper(&self, _shown: &Shown) -> Result<(), Error> {
         Ok(())
     }
 

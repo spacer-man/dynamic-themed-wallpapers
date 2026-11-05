@@ -126,6 +126,16 @@ class App {
     }
   }
 
+  /** Save a caption setting and put the current wallpaper on the screen again with it. */
+  async saveCaption(patch: Partial<Pick<Settings, 'caption_enabled' | 'caption_y' | 'caption_align'>>) {
+    await this.saveSettings(patch);
+    try {
+      await api.reapplyWallpaper();
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
   async selectPlace(qid: string) {
     try {
       this.place = await api.selectPlace(qid, i18n.lang);

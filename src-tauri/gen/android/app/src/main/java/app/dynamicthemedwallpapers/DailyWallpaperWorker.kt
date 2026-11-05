@@ -19,7 +19,7 @@ class DailyWallpaperWorker(context: Context, params: WorkerParameters) : Corouti
         try {
             when (val out = NativeEngine.call(applicationContext, op)) {
                 is NativeEngine.Outcome.Changed -> {
-                    WallpaperSetter.set(applicationContext, out.path, out.caption, out.credit)
+                    WallpaperSetter.set(applicationContext, out.path, out.caption, out.credit, out.y, out.align)
                     // Best effort and after the wallpaper is already in place.
                     runCatching { NativeEngine.call(applicationContext, "prefetch") }
                     Result.success()

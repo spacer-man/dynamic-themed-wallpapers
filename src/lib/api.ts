@@ -53,6 +53,7 @@ export const api = {
   currentWallpaper: (dark: boolean) => call<Wallpaper | null>('current_wallpaper', { dark }),
   changeNow: (systemDark: boolean) =>
     call<Wallpaper | null>('change_now', { systemDark, screen: screenSize() }),
+  reapplyWallpaper: () => call<boolean>('reapply_wallpaper'),
   feedback: (candidateId: string, liked: boolean) => call<void>('feedback', { candidateId, liked }),
   history: (limit: number, offset: number) => call<HistoryEntry[]>('history', { limit, offset }),
   cacheInfo: () => call<CacheInfo>('cache_info'),
