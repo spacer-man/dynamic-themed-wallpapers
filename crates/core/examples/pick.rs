@@ -12,7 +12,7 @@ use std::process::ExitCode;
 use wallpaper_core::http::UreqClient;
 use wallpaper_core::pipeline::{self, Screen};
 use wallpaper_core::score::{Model, ToneFilter, EPSILON, FEATURE_NAMES};
-use wallpaper_core::source::{CandidateRequest, CommonsSource, Source, UnsplashSource};
+use wallpaper_core::source::{CandidateRequest, CommonsSource, Search, Source, UnsplashSource};
 use wallpaper_core::{Scope, Wikidata};
 
 struct Args {
@@ -138,9 +138,13 @@ fn run(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
         Some(k) => Some(UnsplashSource::new(&http, k)?),
         None => None,
     };
-    let mut candidates = commons.candidates(&place, &scope, &req)?;
+    let search = Search::Place {
+        place: &place,
+        scope: &scope,
+    };
+    let mut candidates = commons.candidates(&search, &req)?;
     if let Some(u) = &unsplash {
-        candidates.extend(u.candidates(&place, &scope, &req)?);
+        candidates.extend(u.candidates(&search, &req)?);
     }
     println!("candidates: {}", candidates.len());
 
@@ -180,6 +184,7 @@ fn run(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
         wallpaper_core::source::SourceKind::Unsplash => {
             unsplash.as_ref().ok_or("no unsplash source")?
         }
+        other => return Err(format!("the demo does not use {}", other.name()).into()),
     };
     let jpeg = pipeline::render(&http, source, chosen, args.screen)?;
     std::fs::create_dir_all(&args.out_dir)?;

@@ -1,0 +1,36 @@
+{
+  "page": 1,
+  "per_page": 30,
+  "photos": [
+    {
+      "id": 1234567,
+      "width": 4000,
+      "height": 6000,
+      "url": "https://www.pexels.com/photo/foggy-forest-1234567/",
+      "photographer": "Jane Photographer",
+      "photographer_url": "https://www.pexels.com/@jane",
+      "photographer_id": 42,
+      "avg_color": "#778899",
+      "src": {
+        "original": "https://images.pexels.com/photos/1234567/pexels-photo-1234567.jpeg",
+        "large2x": "https://images.pexels.com/photos/1234567/pexels-photo-1234567.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "large": "https://images.pexels.com/photos/1234567/pexels-photo-1234567.jpeg?auto=compress&cs=tinysrgb&h=650&w=940",
+        "portrait": "https://images.pexels.com/photos/1234567/pexels-photo-1234567.jpeg?auto=compress&cs=tinysrgb&fit=crop&h=1200&w=800"
+      },
+      "liked": false,
+      "alt": "Fog between tall pine trees"
+    },
+    {
+      "id": 7654321,
+      "width": 800,
+      "height": 1200,
+      "url": "https://www.pexels.com/photo/small-7654321/",
+      "photographer": "Tiny Res",
+      "photographer_url": "https://www.pexels.com/@tiny",
+      "src": {"original": "https://images.pexels.com/photos/7654321/pexels-photo-7654321.jpeg"},
+      "alt": ""
+    }
+  ],
+  "total_results": 2,
+  "next_page": "https://api.pexels.com/v1/search/?page=2&per_page=30&query=fog"
+}

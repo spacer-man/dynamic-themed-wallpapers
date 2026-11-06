@@ -8,10 +8,9 @@
 
 use serde::Deserialize;
 
-use super::{Candidate, CandidateRequest, Curation, License, Source, SourceKind};
+use super::{Candidate, CandidateRequest, Curation, License, Search, Source, SourceKind};
 use crate::error::{Error, Result};
 use crate::http::{build_url, HttpClient, MAX_JSON_BYTES};
-use crate::place::{Place, Scope};
 use crate::text::truncate;
 
 const API: &str = "https://api.unsplash.com";
@@ -53,24 +52,17 @@ impl Source for UnsplashSource<'_> {
         SourceKind::Unsplash
     }
 
-    fn candidates(
-        &self,
-        place: &Place,
-        _scope: &Scope,
-        req: &CandidateRequest,
-    ) -> Result<Vec<Candidate>> {
-        let orientation = if req.screen_height >= req.screen_width {
-            "portrait"
-        } else {
-            "landscape"
-        };
+    fn candidates(&self, search: &Search<'_>, req: &CandidateRequest) -> Result<Vec<Candidate>> {
+        // No geo search in the public API: a place is searched by its label.
+        let label = search.text();
+        let orientation = req.orientation();
         // Rotate through the first few result pages so refills don't repeat themselves.
         let page = (req.seed % 3 + 1).to_string();
         let per_page = req.limit.clamp(1, 30).to_string();
         let url = build_url(
             &format!("{API}/search/photos"),
             &[
-                ("query", &place.label),
+                ("query", label),
                 ("per_page", &per_page),
                 ("page", &page),
                 ("orientation", orientation),
@@ -86,8 +78,22 @@ impl Source for UnsplashSource<'_> {
             .results
             .into_iter()
             .filter(|p| p.height >= min_h || p.width >= min_h)
-            .map(|p| p.into_candidate(&place.label))
+            .map(|p| p.into_candidate(label))
             .collect())
+    }
+
+    fn check(&self) -> Result<()> {
+        let url = build_url(
+            &format!("{API}/search/photos"),
+            &[("query", "sky"), ("per_page", "1")],
+        );
+        self.http
+            .get_quick(
+                &url,
+                &[("Authorization", &self.auth), ("Accept-Version", "v1")],
+                MAX_JSON_BYTES,
+            )
+            .map(|_| ())
     }
 
     fn sized_url(&self, c: &Candidate, min_width: u32, min_height: u32) -> String {
