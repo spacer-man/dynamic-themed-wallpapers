@@ -1,9 +1,15 @@
 <script lang="ts">
+  import { app } from '../app.svelte';
   import { t } from '../i18n.svelte';
   import type { HistoryEntry } from '../types';
   import Sheet from './Sheet.svelte';
 
-  let { entry, onclose }: { entry: HistoryEntry; onclose: () => void } = $props();
+  // `onapply` (History only) adds a "Set as wallpaper" button.
+  let {
+    entry,
+    onclose,
+    onapply,
+  }: { entry: HistoryEntry; onclose: () => void; onapply?: () => void } = $props();
   const c = $derived(entry.candidate);
 </script>
 
@@ -21,6 +27,11 @@
     <dd><a href={c.page_url} target="_blank" rel="noopener noreferrer">{c.page_url}</a></dd>
   </dl>
   {#if c.description}<p class="hint">{c.description}</p>{/if}
+  {#if onapply}
+    <button class="btn primary apply" onclick={onapply} disabled={app.busy} aria-busy={app.busy}>
+      {app.busy ? t('details.applying') : t('details.apply')}
+    </button>
+  {/if}
 </Sheet>
 
 <style>
@@ -48,5 +59,10 @@
 
   a {
     color: var(--accent);
+  }
+
+  .apply {
+    width: 100%;
+    margin-top: var(--space-4);
   }
 </style>

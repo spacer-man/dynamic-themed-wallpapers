@@ -14,7 +14,7 @@ use crate::error::{Error, Result};
 use crate::http::{HttpClient, UreqClient};
 use crate::pipeline::{self, Evaluated, Screen};
 use crate::place::{Place, PlaceHit, Scope, SubPlace, Wikidata};
-use crate::score::{Reject, ToneFilter, EPSILON};
+use crate::score::{Features, Reject, ToneFilter, EPSILON};
 use crate::source::{
     Candidate, CandidateRequest, CommonsSource, Source, SourceKind, UnsplashSource,
 };
@@ -476,26 +476,91 @@ impl Engine {
         let ready = cache
             .take_next_ready(now, tone)?
             .ok_or_else(|| Error::NotFound("no wallpaper available".into()))?;
-        store.record_shown(
+        self.finish_shown(
+            &store,
+            &settings,
             &ready.candidate,
             &ready.features,
             &ready.palette,
             ready.dhash,
+            ready.path,
             now,
-        )?;
+        )
+    }
+
+    /// Put a photo from the history back on the screen: same bookkeeping as a normal change
+    /// (new history row, Unsplash ping), same sizing and caption. Uses the cached render when
+    /// it is still on disk, otherwise downloads and renders the photo again from its stored URL.
+    pub fn apply_from_history(&self, history_id: i64, screen: Screen, now: i64) -> Result<Shown> {
+        let store = self.store()?;
+        let settings = self.settings()?;
+        let (entry, features, dhash) = store
+            .history_item(history_id)?
+            .ok_or_else(|| Error::NotFound("that photo is no longer in the history".into()))?;
+        let cache = self.cache(&store, &settings)?;
+        let path = match cache.path_of(&entry.candidate.id)? {
+            Some(p) => p,
+            None => {
+                let commons = CommonsSource::new(self.http.as_ref());
+                let unsplash = match (&self.unsplash_key, settings.unsplash_enabled) {
+                    (Some(key), true) => Some(UnsplashSource::new(self.http.as_ref(), key)?),
+                    _ => None,
+                };
+                // Only the crop plan is needed, so analyse the preview again; the verdict is
+                // irrelevant for a photo the user picked by hand.
+                let analysis = pipeline::analyse(self.http.as_ref(), &entry.candidate, screen)?;
+                let e = Evaluated {
+                    candidate: entry.candidate.clone(),
+                    analysis,
+                    features,
+                    verdict: Ok(0.0),
+                };
+                self.render_into(&cache, &commons, unsplash.as_ref(), &e, screen, now)?;
+                cache.path_of(&entry.candidate.id)?.ok_or_else(|| {
+                    Error::Store("rendered wallpaper is missing from the cache".into())
+                })?
+            }
+        };
+        cache.mark_used(&entry.candidate.id, now)?;
+        self.finish_shown(
+            &store,
+            &settings,
+            &entry.candidate,
+            &features,
+            &entry.palette,
+            dhash,
+            path,
+            now,
+        )
+    }
+
+    /// Record `candidate` as the current wallpaper and build what the platform layer needs.
+    #[allow(clippy::too_many_arguments)]
+    fn finish_shown(
+        &self,
+        store: &Store,
+        settings: &Settings,
+        candidate: &Candidate,
+        features: &Features,
+        palette: &[Swatch],
+        dhash: u64,
+        path: PathBuf,
+        now: i64,
+    ) -> Result<Shown> {
+        store.record_shown(candidate, features, palette, dhash, now)?;
         let entry = store
             .current()?
             .ok_or_else(|| Error::Store("history is empty".into()))?;
 
         // Unsplash API terms: tell them when a photo is actually used. Best effort.
-        if ready.candidate.source == SourceKind::Unsplash {
+        if candidate.source == SourceKind::Unsplash {
             if let (Some(key), true) = (&self.unsplash_key, settings.unsplash_enabled) {
                 if let Ok(u) = UnsplashSource::new(self.http.as_ref(), key) {
-                    let _ = u.report_used(&ready.candidate);
+                    let _ = u.report_used(candidate);
                 }
             }
         }
-        Ok(Shown::new(&settings, entry, ready.path))
+        Ok(Shown::new(settings, entry, path))
     }
 
     /// The wallpaper that is currently set, ready to be installed again (for example after the

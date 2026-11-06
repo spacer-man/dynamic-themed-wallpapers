@@ -357,3 +357,65 @@ fn caption_layout_is_configurable_sanitised_and_reapplied_without_a_new_photo() 
         .unwrap();
     assert_eq!(wild.caption_y, 3);
 }
+
+#[test]
+fn a_history_photo_can_be_set_again_from_cache_or_from_the_network() {
+    let (engine, http) = engine("reapply");
+    engine.select_place("Q34600", "en").unwrap();
+    let first = engine.change_now(SCREEN, false, NOW).unwrap();
+    let second = engine.change_now(SCREEN, false, NOW + 86_400).unwrap();
+    assert_ne!(first.entry.candidate.id, second.entry.candidate.id);
+
+    // Cached render still on disk: no network at all, but a fresh history row.
+    let before = http.requests().len();
+    let again = engine
+        .apply_from_history(first.entry.id, SCREEN, NOW + 2 * 86_400)
+        .unwrap();
+    assert_eq!(http.requests().len(), before, "served from the cache");
+    assert_eq!(again.entry.candidate.id, first.entry.candidate.id);
+    assert_ne!(again.entry.id, first.entry.id, "recorded as a new change");
+    assert_eq!(again.image_path, first.image_path);
+    assert!(!again.caption.is_empty());
+    assert_eq!(engine.history(10, 0).unwrap().len(), 3);
+    assert_eq!(
+        engine.current_shown().unwrap().unwrap().entry.id,
+        again.entry.id
+    );
+
+    // Cache gone: the photo is downloaded and rendered again at the screen size.
+    engine.clear_cache().unwrap();
+    assert!(engine.current_shown().unwrap().is_none());
+    let before = http.requests().len();
+    let rebuilt = engine
+        .apply_from_history(second.entry.id, SCREEN, NOW + 3 * 86_400)
+        .unwrap();
+    assert!(http.requests().len() > before, "downloaded again");
+    let img = pipeline::decode(&std::fs::read(&rebuilt.image_path).unwrap()).unwrap();
+    assert_eq!((img.width(), img.height()), (540, 1200));
+    assert_eq!(engine.history(10, 0).unwrap().len(), 4);
+
+    // Unknown history id: a clear error, nothing recorded.
+    let err = engine.apply_from_history(9999, SCREEN, NOW).unwrap_err();
+    assert!(err.to_string().contains("no longer"), "{err}");
+    assert_eq!(engine.history(10, 0).unwrap().len(), 4);
+}
+
+#[test]
+fn setting_a_history_photo_offline_fails_cleanly_when_the_file_is_gone() {
+    let (engine, _) = engine("reapply-offline");
+    engine.select_place("Q34600", "en").unwrap();
+    let first = engine.change_now(SCREEN, false, NOW).unwrap();
+    engine.clear_cache().unwrap();
+
+    let dir = PathBuf::from(env!("CARGO_TARGET_TMPDIR"))
+        .join(format!("engine-reapply-offline-{}", std::process::id()));
+    let offline = Engine::with_http(
+        dir.join("app.db"),
+        dir.join("cache"),
+        Arc::new(FixtureHttp::new()),
+    );
+    assert!(offline
+        .apply_from_history(first.entry.id, SCREEN, NOW + 1)
+        .is_err());
+    assert_eq!(offline.history(10, 0).unwrap().len(), 1, "nothing recorded");
+}

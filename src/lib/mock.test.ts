@@ -38,3 +38,20 @@ describe('mock backend behaves like the real one', () => {
     await expect(mockCall('change_now', { systemDark: false })).rejects.toMatchObject({ kind: 'not_found' });
   }, 15000);
 });
+
+describe('mock apply_from_history', () => {
+  test('sets an older photo as current, as a new history row; unknown id is not_found', async () => {
+    resetMock();
+    await mockCall('select_place', { qid: 'Q34600', lang: 'en' });
+    const first = (await mockCall('change_now', { systemDark: false })) as Wallpaper;
+    await mockCall('change_now', { systemDark: false });
+    const hist = (await mockCall('history', { limit: 10, offset: 0 })) as { id: number }[];
+    const oldest = hist[hist.length - 1]!;
+    const w = (await mockCall('apply_from_history', { historyId: oldest.id, systemDark: false })) as Wallpaper;
+    expect(w.entry.candidate.id).toBe(first.entry.candidate.id);
+    expect(((await mockCall('history', { limit: 10, offset: 0 })) as unknown[]).length).toBe(3);
+    await expect(mockCall('apply_from_history', { historyId: 999, systemDark: false })).rejects.toMatchObject({
+      kind: 'not_found',
+    });
+  }, 15000);
+});

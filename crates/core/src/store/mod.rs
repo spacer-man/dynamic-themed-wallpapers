@@ -198,6 +198,44 @@ impl Store {
         Ok(out)
     }
 
+    /// One history row with what is needed to show it again: its features and dHash.
+    pub fn history_item(&self, id: i64) -> Result<Option<(HistoryEntry, Features, u64)>> {
+        let row = self
+            .conn
+            .query_row(
+                "SELECT h.shown_at, h.dhash, h.candidate, h.features, h.palette, f.liked
+                 FROM history h LEFT JOIN feedback f ON f.candidate_id = h.candidate_id
+                 WHERE h.id = ?1",
+                [id],
+                |r| {
+                    Ok((
+                        r.get::<_, i64>(0)?,
+                        r.get::<_, i64>(1)?,
+                        r.get::<_, String>(2)?,
+                        r.get::<_, String>(3)?,
+                        r.get::<_, String>(4)?,
+                        r.get::<_, Option<bool>>(5)?,
+                    ))
+                },
+            )
+            .optional()?;
+        let Some((shown_at, dhash, candidate, features, palette, liked)) = row else {
+            return Ok(None);
+        };
+        let entry = HistoryEntry {
+            id,
+            shown_at,
+            candidate: serde_json::from_str(&candidate)?,
+            palette: serde_json::from_str(&palette)?,
+            liked,
+        };
+        Ok(Some((
+            entry,
+            serde_json::from_str(&features)?,
+            dhash as u64,
+        )))
+    }
+
     /// The photo that is the wallpaper right now.
     pub fn current(&self) -> Result<Option<HistoryEntry>> {
         Ok(self.history(1, 0)?.into_iter().next())

@@ -241,6 +241,15 @@ export async function mockCall(cmd: string, a: Record<string, unknown>): Promise
       save();
       return wallpaper(Boolean(a.systemDark));
     }
+    case 'apply_from_history': {
+      const h =
+        db.history.find((x) => x.id === Number(a.historyId)) ??
+        fail('not_found', 'that photo is no longer in the history');
+      await sleep(900);
+      db.history.push({ id: db.nextId++, shown_at: Math.floor(Date.now() / 1000), scene: h.scene, liked: h.liked });
+      save();
+      return wallpaper(Boolean(a.systemDark));
+    }
     case 'feedback': {
       const id = String(a.candidateId).replace('mock:', '');
       const h = [...db.history].reverse().find((x) => x.scene === id);
