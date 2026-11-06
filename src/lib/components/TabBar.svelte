@@ -11,14 +11,16 @@
     { route: 'schedule', icon: 'schedule' },
     { route: 'history', icon: 'history' },
   ];
+  // The source screen is part of the "what to show" tab.
+  const current = $derived(app.route === 'sources' ? 'place' : app.route);
 </script>
 
 <nav class="tabbar" aria-label="Main">
   {#each tabs as tab (tab.route)}
     <button
       class="tab"
-      class:active={app.route === tab.route}
-      aria-current={app.route === tab.route ? 'page' : undefined}
+      class:active={current === tab.route}
+      aria-current={current === tab.route ? 'page' : undefined}
       onclick={() => app.go(tab.route)}
     >
       <Icon name={tab.icon} size={22} />

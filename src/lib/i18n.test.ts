@@ -6,7 +6,7 @@ test('both languages have exactly the same keys', () => {
 });
 
 test('interpolation and fallback', () => {
-  expect(translate('en', 'today.first.text', { place: 'Kyoto' })).toBe('Get the first wallpaper of Kyoto.');
+  expect(translate('en', 'today.first.text', { place: 'Kyoto' })).toBe('Get the first wallpaper: Kyoto.');
   expect(translate('en', 'no.such.key')).toBe('no.such.key');
   expect(translate('ru', 'today.first.text', { place: 'Киото' })).toBe('Подберём первые обои: Киото.');
   // Missing params stay visible instead of printing "undefined".

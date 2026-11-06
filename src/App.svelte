@@ -7,6 +7,7 @@
   import Look from './routes/Look.svelte';
   import PlaceScreen from './routes/PlaceScreen.svelte';
   import Schedule from './routes/Schedule.svelte';
+  import Sources from './routes/Sources.svelte';
   import Today from './routes/Today.svelte';
 
   onMount(() => app.init());
@@ -24,6 +25,7 @@
   <main>
     {#if app.route === 'today'}<Today />
     {:else if app.route === 'place'}<PlaceScreen />
+    {:else if app.route === 'sources'}<Sources />
     {:else if app.route === 'look'}<Look />
     {:else if app.route === 'schedule'}<Schedule />
     {:else}<History />{/if}

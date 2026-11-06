@@ -4,10 +4,22 @@ import { api, inTauri } from './api';
 import { paletteIsDark } from './color';
 import { i18n } from './i18n.svelte';
 import { AppError } from './types';
-import type { CacheInfo, HistoryEntry, Place, Route, Settings, Theme, Wallpaper } from './types';
+import type {
+  CacheInfo,
+  HistoryEntry,
+  Place,
+  Route,
+  Settings,
+  SourceId,
+  SourceStatus,
+  Subject,
+  Subjects,
+  Theme,
+  Wallpaper,
+} from './types';
 
 const HISTORY_PAGE = 60;
-const ROUTES: Route[] = ['today', 'place', 'look', 'schedule', 'history'];
+const ROUTES: Route[] = ['today', 'place', 'sources', 'look', 'schedule', 'history'];
 // The Android system recreates the WebView when the wallpaper changes (and in a few other cases).
 // Remembering where the user was and the last theme makes that invisible.
 const ROUTE_KEY = 'dtw-route';
@@ -16,7 +28,10 @@ const THEME_KEY = 'dtw-theme';
 class App {
   route = $state<Route>('today');
   settings = $state<Settings | null>(null);
-  place = $state<Place | null>(null);
+  subjects = $state<Subjects>({ items: [], active: null });
+  sources = $state<SourceStatus[]>([]);
+  /** Sources being checked right now. */
+  checking = $state<SourceId[]>([]);
   wallpaper = $state<Wallpaper | null>(null);
   history = $state<HistoryEntry[]>([]);
   cache = $state<CacheInfo | null>(null);
@@ -27,6 +42,23 @@ class App {
   ready = $state(false);
   /** Theme for the current photo; recomputed when the dark/light variant flips. */
   theme = $state<Theme | null>(null);
+
+  /** The subject photos are searched for, if one is selected. */
+  get activeSubject(): Subject | null {
+    return this.subjects.items.find((s) => s.id === this.subjects.active) ?? null;
+  }
+
+  /** Short name of the active subject: the place label or the search text. */
+  get activeLabel(): string {
+    const s = this.activeSubject;
+    return s ? (s.kind === 'place' ? s.place.label : s.text) : '';
+  }
+
+  /** The active subject's place, when it is one. */
+  get place(): Place | null {
+    const s = this.activeSubject;
+    return s?.kind === 'place' ? s.place : null;
+  }
 
   /** Dark UI? Follows the system if asked to, otherwise the photo's own tone. */
   get dark(): boolean {
@@ -46,7 +78,8 @@ class App {
     try {
       this.settings = await api.getSettings();
       i18n.choice = this.settings.lang;
-      this.place = await api.selectedPlace();
+      this.subjects = await api.subjects();
+      this.sources = await api.sourceStatuses();
       this.wallpaper = await api.currentWallpaper(this.systemDark);
       this.theme = this.wallpaper?.theme ?? null;
       // The first guess used the system variant; fix it before anything is shown (no flash).
@@ -71,6 +104,7 @@ class App {
     }
     if (route === 'history') void this.loadHistory();
     if (route === 'schedule') void this.loadCache();
+    if (route === 'sources' || route === 'place') void this.loadSources();
   }
 
   /** Re-theme after the dark/light variant changed (cheap: palette in, colours out). */
@@ -172,11 +206,89 @@ class App {
 
   async selectPlace(qid: string) {
     try {
-      this.place = await api.selectPlace(qid, i18n.lang);
+      await api.selectPlace(qid, i18n.lang);
+      this.subjects = await api.subjects();
       this.settings = await api.getSettings();
+      void this.loadSources();
       this.route = 'today';
     } catch (e) {
       this.fail(e);
+    }
+  }
+
+  /** Run a subject call and keep the new list; the queue changed, so statuses may have too. */
+  private async subjectCall(call: () => Promise<Subjects>): Promise<boolean> {
+    try {
+      this.subjects = await call();
+      void this.loadSources();
+      return true;
+    } catch (e) {
+      this.fail(e);
+      return false;
+    }
+  }
+
+  addQuery(text: string) {
+    return this.subjectCall(() => api.addQuerySubject(text));
+  }
+
+  updateQuery(id: string, text: string) {
+    return this.subjectCall(() => api.updateQuerySubject(id, text));
+  }
+
+  selectSubject(id: string) {
+    return this.subjectCall(() => api.selectSubject(id));
+  }
+
+  deleteSubject(id: string) {
+    return this.subjectCall(() => api.deleteSubject(id));
+  }
+
+  async loadSources() {
+    try {
+      this.sources = await api.sourceStatuses();
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  /** One lightweight request to the source; its status is updated in place. */
+  async checkSource(id: SourceId) {
+    if (this.checking.includes(id)) return;
+    this.checking = [...this.checking, id];
+    try {
+      const st = await api.checkSource(id);
+      this.sources = this.sources.map((s) => (s.source === id ? st : s));
+    } catch (e) {
+      this.fail(e);
+    } finally {
+      this.checking = this.checking.filter((x) => x !== id);
+    }
+  }
+
+  /** Refresh button: check every source that can be checked, one after another (be gentle). */
+  async checkAll() {
+    for (const s of this.sources) {
+      if (!s.needs_key || s.has_key) await this.checkSource(s.source);
+    }
+  }
+
+  /** Choose the source photos come from. */
+  async selectSource(id: SourceId) {
+    await this.saveSettings({ source: id });
+    await this.loadSources();
+  }
+
+  /** Save or (with `null`) remove a key. Returns false when the key looks malformed. */
+  async setSourceKey(id: SourceId, key: string | null): Promise<boolean> {
+    try {
+      await api.setSourceKey(id, key);
+      await this.loadSources();
+      return true;
+    } catch (e) {
+      if (e instanceof AppError && e.kind === 'config') return false;
+      this.fail(e);
+      return false;
     }
   }
 
