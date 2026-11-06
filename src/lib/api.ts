@@ -54,6 +54,8 @@ export const api = {
   selectPlace: (qid: string, lang: string) => call<Place>('select_place', { qid, lang }),
   subjects: () => call<Subjects>('subjects'),
   addQuerySubject: (text: string) => call<Subjects>('add_query_subject', { text }),
+  /** A Pinterest board address as pasted by the user; also switches the source to Pinterest. */
+  addBoardSubject: (url: string) => call<Subjects>('add_board_subject', { url }),
   updateQuerySubject: (id: string, text: string) => call<Subjects>('update_query_subject', { id, text }),
   selectSubject: (id: string) => call<Subjects>('select_subject', { id }),
   deleteSubject: (id: string) => call<Subjects>('delete_subject', { id }),
@@ -62,8 +64,14 @@ export const api = {
   /** `null` removes the key. The key is never read back. */
   setSourceKey: (source: SourceId, key: string | null) => call<void>('set_source_key', { source, key }),
   currentWallpaper: (dark: boolean) => call<Wallpaper | null>('current_wallpaper', { dark }),
-  changeNow: (systemDark: boolean) =>
-    call<Wallpaper | null>('change_now', { systemDark, screen: screenSize() }),
+  /** `source` is a one-time substitute for the chosen source; it is never saved. */
+  changeNow: (systemDark: boolean, source?: SourceId) =>
+    call<Wallpaper | null>('change_now', { systemDark, screen: screenSize(), source: source ?? null }),
+  /** The screen a notification asked for (once), e.g. "sources". Always null outside Android. */
+  launchRoute: () => call<string | null>('launch_route'),
+  notificationsEnabled: () => call<boolean>('notifications_enabled'),
+  /** Shows the system permission dialog on Android 13+; resolves with the state before the answer. */
+  requestNotifications: () => call<boolean>('request_notifications'),
   applyFromHistory: (historyId: number, systemDark: boolean) =>
     call<Wallpaper | null>('apply_from_history', { historyId, systemDark, screen: screenSize() }),
   reapplyWallpaper: () => call<boolean>('reapply_wallpaper'),

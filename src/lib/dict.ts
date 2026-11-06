@@ -50,6 +50,7 @@ export const en: Dict = {
 
   'subject.kind.place': 'Place',
   'subject.kind.query': 'Text',
+  'subject.kind.board': 'Pinterest board',
   'subject.saved': 'Saved',
   'subject.saved.empty': 'Nothing saved yet. Add a place or a few words below.',
   'subject.active': 'In use',
@@ -59,6 +60,13 @@ export const en: Dict = {
   'subject.add': 'Add',
   'subject.mode.place': 'Place',
   'subject.mode.query': 'Words',
+  'subject.mode.board': 'Pinterest',
+  'subject.board.placeholder': 'pinterest.com/user/board/',
+  'subject.board.add': 'Add board',
+  'subject.board.adding': 'Checking the board…',
+  'subject.board.hint': 'Paste the address of a public board. Pinterest shares only the 25 latest pins of a board, and only photos large enough for your screen are used.',
+  'subject.board.locked': 'A board works only with the Pinterest source, so adding one switches to it. Choosing a place or words switches back.',
+  'subject.board.invalid': 'Not a board address. Use pinterest.com/user/board/ (short pin.it links are not supported).',
   'subject.query.placeholder': 'Foggy forest, neon city, desert dunes…',
   'subject.query.hint': 'Describe the picture in a few words. Works with every source.',
   'subject.query.add': 'Save',
@@ -88,6 +96,8 @@ export const en: Dict = {
   'sources.unsplash': 'High-quality photos. Needs your own free key.',
   'sources.pexels': 'Free photos. Needs your own free key.',
   'sources.pixabay': 'Free images. Needs your own key; the biggest sizes need Pixabay full access.',
+  'sources.pinterest': 'Public Pinterest boards only, no key. Pinterest shares the 25 latest pins of a board; pins too small for your screen are skipped. Not for places or words.',
+  'sources.locked.board': 'A Pinterest board is selected, so only Pinterest can be used. Choose a place or words to use the other sources.',
   'sources.key': 'API key',
   'sources.key.placeholder': 'Paste your key',
   'sources.key.save': 'Save key',
@@ -131,6 +141,9 @@ export const en: Dict = {
   'schedule.forget.confirm': 'Tap again to erase history, likes and learned taste',
   'schedule.forget.hint': 'Everything stays on this device. This wipes it.',
   'schedule.android': 'Applied by the Android background job.',
+  'schedule.notify.off': 'Notifications are off. Without them you will not hear when the daily change fails, and cannot pick another source from the notification.',
+  'schedule.notify.allow': 'Allow notifications',
+  'schedule.notify.on': 'If the daily change cannot get a photo, a notification offers another source for that one time.',
 
   'history.title': 'History',
   'history.empty': 'Wallpapers you have seen will appear here.',
@@ -145,6 +158,7 @@ export const en: Dict = {
   'error.storage': 'Could not read or write local data.',
   'error.internal': 'Something went wrong.',
   'error.dismiss': 'Dismiss',
+  'error.try': 'Try {source}',
 };
 
 export const ru: Dict = {
@@ -195,6 +209,7 @@ export const ru: Dict = {
 
   'subject.kind.place': 'Место',
   'subject.kind.query': 'Текст',
+  'subject.kind.board': 'Доска Pinterest',
   'subject.saved': 'Сохранённое',
   'subject.saved.empty': 'Пока ничего нет. Добавьте место или несколько слов ниже.',
   'subject.active': 'Используется',
@@ -204,6 +219,13 @@ export const ru: Dict = {
   'subject.add': 'Добавить',
   'subject.mode.place': 'Место',
   'subject.mode.query': 'Слова',
+  'subject.mode.board': 'Pinterest',
+  'subject.board.placeholder': 'pinterest.com/user/board/',
+  'subject.board.add': 'Добавить доску',
+  'subject.board.adding': 'Проверяем доску…',
+  'subject.board.hint': 'Вставьте адрес публичной доски. Pinterest отдаёт только 25 последних пинов доски, и берутся только фото, достаточно крупные для вашего экрана.',
+  'subject.board.locked': 'Доска работает только с источником Pinterest, поэтому при добавлении источник переключится на него. Выбор места или слов вернёт прежний.',
+  'subject.board.invalid': 'Это не адрес доски. Нужен вид pinterest.com/user/board/ (короткие ссылки pin.it не поддерживаются).',
   'subject.query.placeholder': 'Туманный лес, неоновый город, дюны…',
   'subject.query.hint': 'Опишите картинку парой слов. Работает со всеми источниками.',
   'subject.query.add': 'Сохранить',
@@ -233,6 +255,8 @@ export const ru: Dict = {
   'sources.unsplash': 'Качественные фото. Нужен ваш бесплатный ключ.',
   'sources.pexels': 'Бесплатные фото. Нужен ваш бесплатный ключ.',
   'sources.pixabay': 'Бесплатные изображения. Нужен ваш ключ; самые большие размеры — при полном доступе Pixabay.',
+  'sources.pinterest': 'Только публичные доски Pinterest, без ключа. Pinterest отдаёт 25 последних пинов доски; пины, слишком мелкие для вашего экрана, пропускаются. Не для мест и слов.',
+  'sources.locked.board': 'Выбрана доска Pinterest, поэтому доступен только Pinterest. Выберите место или слова, чтобы использовать другие источники.',
   'sources.key': 'Ключ API',
   'sources.key.placeholder': 'Вставьте ключ',
   'sources.key.save': 'Сохранить ключ',
@@ -276,6 +300,9 @@ export const ru: Dict = {
   'schedule.forget.confirm': 'Нажмите ещё раз: сотрутся история, лайки и «вкус»',
   'schedule.forget.hint': 'Всё хранится только на этом устройстве. Это сотрёт всё.',
   'schedule.android': 'Применяется фоновой задачей Android.',
+  'schedule.notify.off': 'Уведомления выключены. Без них вы не узнаете, что ежедневная смена не удалась, и не сможете выбрать другой источник из уведомления.',
+  'schedule.notify.allow': 'Разрешить уведомления',
+  'schedule.notify.on': 'Если ежедневная смена не смогла получить фото, уведомление предложит другой источник на этот один раз.',
 
   'history.title': 'История',
   'history.empty': 'Здесь появятся обои, которые вы уже видели.',
@@ -290,6 +317,7 @@ export const ru: Dict = {
   'error.storage': 'Не удалось прочитать или записать данные.',
   'error.internal': 'Что-то пошло не так.',
   'error.dismiss': 'Скрыть',
+  'error.try': 'Попробовать {source}',
 };
 
 

@@ -3,7 +3,7 @@
 import { api, inTauri } from './api';
 import { paletteIsDark } from './color';
 import { i18n } from './i18n.svelte';
-import { AppError } from './types';
+import { AppError, subjectName } from './types';
 import type {
   CacheInfo,
   HistoryEntry,
@@ -35,6 +35,12 @@ class App {
   wallpaper = $state<Wallpaper | null>(null);
   history = $state<HistoryEntry[]>([]);
   cache = $state<CacheInfo | null>(null);
+  /** The source that just failed a manual change; the error banner then offers the others. */
+  failedSource = $state<SourceId | null>(null);
+  /** Why the last pasted board address was refused (shown next to the field). */
+  boardError = $state<string | null>(null);
+  /** Whether Android lets us show notifications (always true elsewhere). */
+  notifications = $state(true);
   /** A wallpaper is being picked (network + image work), can take several seconds. */
   busy = $state(false);
   error = $state<AppError | null>(null);
@@ -51,13 +57,22 @@ class App {
   /** Short name of the active subject: the place label or the search text. */
   get activeLabel(): string {
     const s = this.activeSubject;
-    return s ? (s.kind === 'place' ? s.place.label : s.text) : '';
+    return s ? subjectName(s) : '';
   }
 
   /** The active subject's place, when it is one. */
   get place(): Place | null {
     const s = this.activeSubject;
     return s?.kind === 'place' ? s.place : null;
+  }
+
+  /**
+   * Other sources that work with the active subject right now (up to three), offered after a
+   * manual change failed because of the source. Never includes keyed sources without a key.
+   */
+  get fallbackOptions(): SourceStatus[] {
+    if (!this.failedSource) return [];
+    return this.sources.filter((s) => s.source !== this.failedSource && s.state === 'available').slice(0, 3);
   }
 
   /** Dark UI? Follows the system if asked to, otherwise the photo's own tone. */
@@ -75,6 +90,10 @@ class App {
     if (saved) this.go(saved);
     if (r && (ROUTES as string[]).includes(r)) this.go(r as Route);
     mq.addEventListener('change', (e) => (this.systemDark = e.matches));
+    // A notification can ask for a screen, at start or when the app comes back to the front.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') void this.openRequestedRoute();
+    });
     try {
       this.settings = await api.getSettings();
       i18n.choice = this.settings.lang;
@@ -84,6 +103,7 @@ class App {
       this.theme = this.wallpaper?.theme ?? null;
       // The first guess used the system variant; fix it before anything is shown (no flash).
       if (this.theme && this.theme.dark !== this.dark) await this.retheme();
+      await this.openRequestedRoute();
     } catch (e) {
       this.fail(e);
     } finally {
@@ -91,7 +111,18 @@ class App {
     }
   }
 
+  /** The "couldn't get a photo" notification opens the app on the Sources screen. */
+  async openRequestedRoute() {
+    try {
+      const r = await api.launchRoute();
+      if (r === 'sources') this.go('sources');
+    } catch {
+      // not on Android, or the plugin is not ready: nothing to open
+    }
+  }
+
   fail(e: unknown) {
+    this.failedSource = null;
     this.error = e instanceof AppError ? e : new AppError('internal', String(e));
   }
 
@@ -103,7 +134,10 @@ class App {
       // storage unavailable: just not remembered
     }
     if (route === 'history') void this.loadHistory();
-    if (route === 'schedule') void this.loadCache();
+    if (route === 'schedule') {
+      void this.loadCache();
+      void this.loadNotifications();
+    }
     if (route === 'sources' || route === 'place') void this.loadSources();
   }
 
@@ -118,12 +152,14 @@ class App {
     }
   }
 
-  async changeNow() {
+  /** `source` replaces the chosen source for this one change; the choice itself stays. */
+  async changeNow(source?: SourceId) {
     if (this.busy) return;
     this.busy = true;
     this.error = null;
+    this.failedSource = null;
     try {
-      const w = await api.changeNow(this.systemDark);
+      const w = await api.changeNow(this.systemDark, source);
       if (w) {
         this.wallpaper = w;
         this.theme = w.theme;
@@ -132,6 +168,11 @@ class App {
       }
     } catch (e) {
       this.fail(e);
+      // The source that failed may now be marked unreachable; refresh so alternatives are right.
+      await this.loadSources();
+      if (isSourceError(e, this.sources.find((s) => s.active))) {
+        this.failedSource = source ?? this.sources.find((s) => s.active)?.source ?? null;
+      }
     } finally {
       this.busy = false;
     }
@@ -188,6 +229,8 @@ class App {
     try {
       this.settings = await api.saveSettings(this.settings);
       if (patch.lang) i18n.choice = this.settings.lang;
+      // Setting up the schedule is the moment to ask for the notification permission.
+      if (patch.change_time) void this.askNotifications();
     } catch (e) {
       this.settings = before;
       this.fail(e);
@@ -220,6 +263,8 @@ class App {
   private async subjectCall(call: () => Promise<Subjects>): Promise<boolean> {
     try {
       this.subjects = await call();
+      // A board switches the source to Pinterest (and leaving it switches back).
+      this.settings = await api.getSettings();
       void this.loadSources();
       return true;
     } catch (e) {
@@ -232,6 +277,23 @@ class App {
     return this.subjectCall(() => api.addQuerySubject(text));
   }
 
+  /** Save a Pinterest board from a pasted address. Returns false when the address is not a board. */
+  async addBoard(url: string): Promise<boolean> {
+    try {
+      this.subjects = await api.addBoardSubject(url);
+      this.settings = await api.getSettings();
+      void this.loadSources();
+      return true;
+    } catch (e) {
+      if (e instanceof AppError && e.kind === 'config') {
+        this.boardError = e.message;
+        return false;
+      }
+      this.fail(e);
+      return false;
+    }
+  }
+
   updateQuery(id: string, text: string) {
     return this.subjectCall(() => api.updateQuerySubject(id, text));
   }
@@ -242,6 +304,25 @@ class App {
 
   deleteSubject(id: string) {
     return this.subjectCall(() => api.deleteSubject(id));
+  }
+
+  async loadNotifications() {
+    try {
+      this.notifications = await api.notificationsEnabled();
+    } catch {
+      this.notifications = true;
+    }
+  }
+
+  /** Android 13+: shows the system dialog once; afterwards the state is read again. */
+  async askNotifications() {
+    try {
+      this.notifications = await api.requestNotifications();
+      // The dialog answers later; look again shortly after.
+      setTimeout(() => void this.loadNotifications(), 4000);
+    } catch {
+      // not available here
+    }
   }
 
   async loadSources() {
@@ -331,6 +412,16 @@ class App {
 }
 
 export const app = new App();
+
+/**
+ * A failed manual change that says something about the source (unreachable, bad answer, nothing
+ * usable, or a missing key), as opposed to a storage or image problem.
+ */
+export function isSourceError(e: unknown, active?: SourceStatus): boolean {
+  if (!(e instanceof AppError)) return false;
+  if (e.kind === 'network' || e.kind === 'not_found' || e.kind === 'parse') return true;
+  return e.kind === 'config' && active?.state === 'needs_key';
+}
 
 /** Write the theme into CSS custom properties; `null` restores the stylesheet defaults. */
 export function applyTheme(theme: Theme | null, dark: boolean) {

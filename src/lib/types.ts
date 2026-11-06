@@ -6,7 +6,7 @@ export type CaptionAlign = 'left' | 'center' | 'right';
 export type Route = 'today' | 'place' | 'sources' | 'look' | 'schedule' | 'history';
 
 /** Where photos come from. Same strings as `SourceKind` in crates/core. */
-export type SourceId = 'commons' | 'openverse' | 'wallhaven' | 'unsplash' | 'pexels' | 'pixabay';
+export type SourceId = 'commons' | 'openverse' | 'wallhaven' | 'unsplash' | 'pexels' | 'pixabay' | 'pinterest';
 
 export interface Settings {
   tone: Tone;
@@ -46,8 +46,15 @@ export interface Place extends PlaceHit {
   commons_category: string | null;
 }
 
-/** A saved thing to show: a place, or free text. (Pinterest boards will be a third kind.) */
-export type Subject = { id: string } & ({ kind: 'place'; place: Place } | { kind: 'query'; text: string });
+/** A saved thing to show: a place, free text, or a Pinterest board (served by Pinterest only). */
+export type Subject = { id: string } & (
+  | { kind: 'place'; place: Place }
+  | { kind: 'query'; text: string }
+  | { kind: 'board'; url: string; name: string }
+);
+
+export const subjectName = (s: Subject): string =>
+  s.kind === 'place' ? s.place.label : s.kind === 'query' ? s.text : s.name;
 
 export interface Subjects {
   items: Subject[];

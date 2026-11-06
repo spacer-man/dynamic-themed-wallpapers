@@ -45,6 +45,12 @@
         onchange={(v) => app.saveSettings({ wifi_only: v })}
       />
       <span class="hint">{t('schedule.android')}</span>
+      {#if app.notifications}
+        <span class="hint">{t('schedule.notify.on')}</span>
+      {:else}
+        <span class="hint">{t('schedule.notify.off')}</span>
+        <button class="btn" onclick={() => app.askNotifications()}>{t('schedule.notify.allow')}</button>
+      {/if}
     </div>
 
     <div class="card">

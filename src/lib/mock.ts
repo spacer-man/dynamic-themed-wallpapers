@@ -20,6 +20,7 @@ import type {
   Theme,
   Wallpaper,
 } from './types';
+import { subjectName } from './types';
 
 interface Scene {
   id: string;
@@ -117,6 +118,8 @@ interface MockDb {
   sources: Partial<Record<SourceId, MockSource>>;
   history: { id: number; shown_at: number; scene: string; liked: boolean | null }[];
   nextId: number;
+  /** The source chosen before a Pinterest board took over; restored when the board is left. */
+  before_board?: SourceId;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -155,7 +158,14 @@ export function migrateDb(raw: Record<string, unknown>): MockDb {
       subjects.active = 's1';
     }
   }
-  return { settings, subjects, sources: old.sources ?? {}, history: old.history ?? [], nextId: old.nextId ?? 1 };
+  return {
+    settings,
+    subjects,
+    sources: old.sources ?? {},
+    history: old.history ?? [],
+    nextId: old.nextId ?? 1,
+    before_board: old.before_board,
+  };
 }
 
 function load(): MockDb {
@@ -204,7 +214,33 @@ function activeSubject(): Subject | null {
   return db.subjects.items.find((x) => x.id === db.subjects.active) ?? null;
 }
 
-const subjectLabel = (x: Subject | null): string => (x ? (x.kind === 'place' ? x.place.label : x.text) : 'Sample');
+const subjectLabel = (x: Subject | null): string => (x ? subjectName(x) : 'Sample');
+
+/** Same rule as core: boards need Pinterest, and Pinterest serves nothing but boards. */
+const supports = (id: SourceId, kind: Subject['kind']): boolean => (kind === 'board') === (id === 'pinterest');
+
+/** Pinterest board address → [user, board], or null. Mirrors parse_board_url in core. */
+export function parseBoard(input: string): { user: string; board: string; url: string } | null {
+  const m = /^(?:https?:\/\/)?(?:[a-z]{2}\.|www\.)?pinterest\.(?:[a-z]{2,3}|co\.uk|com\.au)\/([^/?#\s]+)\/([^/?#\s]+)/i.exec(input.trim());
+  if (!m) return null;
+  const user = m[1]!;
+  const board = m[2]!.replace(/\.rss$/, '');
+  if (['pin', 'search', 'ideas', 'today', 'explore', 'settings', 'business', 'login'].includes(user.toLowerCase())) return null;
+  return { user, board, url: `https://www.pinterest.com/${user}/${board}.rss` };
+}
+
+/** Keep the source in line with the active subject (core: Engine::sync_source). */
+function syncSource() {
+  const a = activeSubject();
+  if (a?.kind === 'board') {
+    if (db.settings.source !== 'pinterest') {
+      db.before_board = db.settings.source;
+      db.settings.source = 'pinterest';
+    }
+  } else if (db.settings.source === 'pinterest') {
+    db.settings.source = db.before_board && db.before_board !== 'pinterest' ? db.before_board : 'commons';
+  }
+}
 
 function candidate(s: Scene, label: string, coords: Place['coords']): Candidate {
   return {
@@ -217,11 +253,11 @@ function candidate(s: Scene, label: string, coords: Place['coords']): Candidate 
     preview_url: sceneImage(s, 270, 600),
     width: 4000,
     height: 6000,
-    author: 'Sample Author',
+    author: db.settings.source === 'pinterest' ? 'Pinterest' : 'Sample Author',
     author_url: null,
     license: { short_name: 'CC BY-SA 4.0 (sample)', url: 'https://creativecommons.org/licenses/by-sa/4.0', attribution_required: true },
     coords,
-    place_label: label,
+    place_label: db.settings.source === 'pinterest' ? `Pinterest: ${label}` : label,
   };
 }
 
@@ -253,8 +289,8 @@ function sourceStatus(id: SourceId): SourceStatus {
   const m = db.sources[id];
   const needsKey = NEEDS_KEY.includes(id);
   const hasKey = !!m?.key;
-  // Every source can serve places (by label) and queries today; boards will not be.
-  const unsupported = false;
+  const subject = activeSubject();
+  const unsupported = subject ? !supports(id, subject.kind) : false;
   const state: SourceState = unsupported
     ? 'unsupported'
     : needsKey && !hasKey
@@ -273,7 +309,7 @@ function sourceStatus(id: SourceId): SourceStatus {
   };
 }
 
-const SOURCE_IDS: SourceId[] = ['commons', 'openverse', 'wallhaven', 'unsplash', 'pexels', 'pixabay'];
+const SOURCE_IDS: SourceId[] = ['commons', 'openverse', 'wallhaven', 'unsplash', 'pexels', 'pixabay', 'pinterest'];
 
 function normalizeQuery(text: unknown): string {
   const q = String(text).replace(/\s+/g, ' ').trim();
@@ -290,6 +326,9 @@ export async function mockCall(cmd: string, a: Record<string, unknown>): Promise
     case 'save_settings': {
       const next = { ...DEFAULT_SETTINGS, ...(a.settings as Settings) };
       if (!SOURCE_IDS.includes(next.source)) next.source = 'commons';
+      // A stale screen must not undo the source a board needs.
+      const subject = activeSubject();
+      if (subject && !supports(next.source, subject.kind)) next.source = db.settings.source;
       db.settings = next;
       save();
       return db.settings;
@@ -307,6 +346,21 @@ export async function mockCall(cmd: string, a: Record<string, unknown>): Promise
         db.subjects.items.push({ id, kind: 'query', text });
         db.subjects.active = id;
       }
+      syncSource();
+      save();
+      return db.subjects;
+    }
+    case 'add_board_subject': {
+      const b = parseBoard(String(a.url)) ?? fail('config', 'not a Pinterest board address');
+      await sleep(350);
+      const same = db.subjects.items.find((x) => x.kind === 'board' && x.url === b.url);
+      if (same) db.subjects.active = same.id;
+      else {
+        const id = `s${Math.max(0, ...db.subjects.items.map((x) => Number(x.id.slice(1)) || 0)) + 1}`;
+        db.subjects.items.push({ id, kind: 'board', url: b.url, name: decodeURIComponent(b.board).replace(/[-_]+/g, ' ') });
+        db.subjects.active = id;
+      }
+      syncSource();
       save();
       return db.subjects;
     }
@@ -315,12 +369,14 @@ export async function mockCall(cmd: string, a: Record<string, unknown>): Promise
       const x = db.subjects.items.find((i) => i.id === a.id) ?? fail('not_found', 'no saved subject');
       if (x.kind !== 'query') fail('config', 'only a search text can be edited');
       x.text = text;
+      syncSource();
       save();
       return db.subjects;
     }
     case 'select_subject': {
       if (!db.subjects.items.some((i) => i.id === a.id)) fail('not_found', 'no saved subject');
       db.subjects.active = String(a.id);
+      syncSource();
       save();
       return db.subjects;
     }
@@ -328,6 +384,7 @@ export async function mockCall(cmd: string, a: Record<string, unknown>): Promise
       if (!db.subjects.items.some((i) => i.id === a.id)) fail('not_found', 'no saved subject');
       db.subjects.items = db.subjects.items.filter((i) => i.id !== a.id);
       if (db.subjects.active === a.id) db.subjects.active = db.subjects.items[0]?.id ?? null;
+      syncSource();
       save();
       return db.subjects;
     }
@@ -379,16 +436,28 @@ export async function mockCall(cmd: string, a: Record<string, unknown>): Promise
         db.subjects.items.push({ id, kind: 'place', place });
         db.subjects.active = id;
       }
+      syncSource();
       save();
       return place;
     }
+    case 'launch_route':
+      return null;
+    case 'notifications_enabled':
+    case 'request_notifications':
+      return true;
     case 'current_wallpaper':
       return wallpaper(Boolean(a.dark));
     case 'change_now': {
       if (!activeSubject()) fail('config', 'nothing to search for is selected yet');
-      const st = sourceStatus(db.settings.source);
+      // `source` is a one-time substitute chosen after a failure; it is never saved.
+      const used = (a.source as SourceId | null) ?? db.settings.source;
+      if (!SOURCE_IDS.includes(used)) fail('config', 'unknown source');
+      const st = sourceStatus(used);
       if (st.state === 'needs_key') fail('config', 'this source needs an API key');
+      if (st.state === 'unsupported') fail('config', 'this source cannot serve this subject');
       await sleep(900);
+      // Demo: a source whose last check failed keeps failing until a check succeeds.
+      if (!a.source && st.state === 'unreachable') fail('network', st.error ?? 'the source is not reachable');
       const tone = db.settings.follow_system_theme ? (a.systemDark ? 'dark' : 'light') : db.settings.tone;
       const shown = new Set(db.history.map((h) => h.scene));
       const next =

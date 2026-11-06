@@ -5,13 +5,13 @@
   import { MAX_RADIUS_KM, MIN_RADIUS_KM, isWide, naturalRadiusKm } from '../lib/place';
   import type { PlaceHit } from '../lib/types';
   import { sourceName } from '../lib/sources';
-  import type { Subject } from '../lib/types';
+  import { subjectName, type Subject } from '../lib/types';
   import Icon from '../lib/components/Icon.svelte';
   import Segmented from '../lib/components/Segmented.svelte';
   import StatusChip from '../lib/components/StatusChip.svelte';
   import Toggle from '../lib/components/Toggle.svelte';
 
-  let mode = $state<'place' | 'query'>('place');
+  let mode = $state<'place' | 'query' | 'board'>('place');
   let query = $state('');
   let hits = $state<PlaceHit[]>([]);
   let searching = $state(false);
@@ -49,7 +49,24 @@
   let editingId = $state<string | null>(null);
   let textInvalid = $state(false);
 
-  const nameOf = (s: Subject) => (s.kind === 'place' ? s.place.label : s.text);
+  const nameOf = (s: Subject) => subjectName(s);
+
+  // Pinterest boards: paste an address; the source switches to Pinterest by itself.
+  let boardUrl = $state('');
+  let addingBoard = $state(false);
+  let boardInvalid = $state(false);
+
+  async function submitBoard() {
+    const v = boardUrl.trim();
+    if (!v) return;
+    addingBoard = true;
+    boardInvalid = false;
+    app.boardError = null;
+    const ok = await app.addBoard(v);
+    addingBoard = false;
+    if (ok) boardUrl = '';
+    else boardInvalid = app.boardError !== null;
+  }
 
   async function submitText() {
     const v = text.trim();
@@ -165,6 +182,7 @@
       options={[
         { value: 'place', label: t('subject.mode.place') },
         { value: 'query', label: t('subject.mode.query') },
+        { value: 'board', label: t('subject.mode.board') },
       ]}
       value={mode}
       onchange={(v) => (mode = v)}
@@ -201,6 +219,34 @@
           {/each}
         </ul>
       {/if}
+    {:else if mode === 'board'}
+      <form
+        class="textform"
+        onsubmit={(e) => {
+          e.preventDefault();
+          void submitBoard();
+        }}
+      >
+        <input
+          type="url"
+          inputmode="url"
+          placeholder={t('subject.board.placeholder')}
+          bind:value={boardUrl}
+          maxlength="300"
+          autocomplete="off"
+          autocapitalize="off"
+          spellcheck="false"
+          aria-label={t('subject.mode.board')}
+          aria-invalid={boardInvalid}
+        />
+        <div class="actions">
+          <button class="btn primary" type="submit" disabled={addingBoard || !boardUrl.trim()}>
+            {addingBoard ? t('subject.board.adding') : t('subject.board.add')}
+          </button>
+        </div>
+      </form>
+      <span class="hint">{boardInvalid ? t('subject.board.invalid') : t('subject.board.hint')}</span>
+      <span class="hint">{t('subject.board.locked')}</span>
     {:else}
       <form
         class="textform"
@@ -238,6 +284,9 @@
         <strong>{sourceName(activeSource.source)}</strong>
         <StatusChip state={activeSource.state} />
       </div>
+    {/if}
+    {#if app.activeSubject?.kind === 'board'}
+      <span class="hint">{t('sources.locked.board')}</span>
     {/if}
     <button class="btn" onclick={() => app.go('sources')}>{t('source.change')}</button>
   </div>
