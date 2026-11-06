@@ -12,6 +12,7 @@ use crate::subject::SubjectKind;
 pub mod commons;
 pub mod openverse;
 pub mod pexels;
+pub mod pinterest;
 pub mod pixabay;
 pub mod unsplash;
 pub mod wallhaven;
@@ -19,6 +20,7 @@ pub mod wallhaven;
 pub use commons::CommonsSource;
 pub use openverse::OpenverseSource;
 pub use pexels::PexelsSource;
+pub use pinterest::PinterestSource;
 pub use pixabay::PixabaySource;
 pub use unsplash::UnsplashSource;
 pub use wallhaven::WallhavenSource;
@@ -32,17 +34,23 @@ pub enum SourceKind {
     Wallhaven,
     Pexels,
     Pixabay,
+    Pinterest,
 }
 
 impl SourceKind {
-    pub const ALL: [SourceKind; 6] = [
+    pub const ALL: [SourceKind; 7] = [
         SourceKind::Commons,
         SourceKind::Openverse,
         SourceKind::Wallhaven,
         SourceKind::Unsplash,
         SourceKind::Pexels,
         SourceKind::Pixabay,
+        SourceKind::Pinterest,
     ];
+
+    pub fn from_id(id: &str) -> Option<SourceKind> {
+        Self::ALL.into_iter().find(|k| k.id() == id)
+    }
 
     /// Same string as on the wire (`"commons"`, `"pixabay"`…).
     pub fn id(self) -> &'static str {
@@ -53,6 +61,7 @@ impl SourceKind {
             SourceKind::Wallhaven => "wallhaven",
             SourceKind::Pexels => "pexels",
             SourceKind::Pixabay => "pixabay",
+            SourceKind::Pinterest => "pinterest",
         }
     }
 
@@ -64,6 +73,7 @@ impl SourceKind {
             SourceKind::Wallhaven => "Wallhaven",
             SourceKind::Pexels => "Pexels",
             SourceKind::Pixabay => "Pixabay",
+            SourceKind::Pinterest => "Pinterest",
         }
     }
 
@@ -76,10 +86,12 @@ impl SourceKind {
     }
 
     /// Can this source serve a subject of that kind? (A place is served either by geography
-    /// or, for key-word sources, by its label.) Boards will be served by Pinterest only.
+    /// or, for key-word sources, by its label.) A Pinterest board is served by Pinterest only,
+    /// and Pinterest serves nothing else (it has no search).
     pub fn supports(self, subject: SubjectKind) -> bool {
         match subject {
-            SubjectKind::Place | SubjectKind::Query => true,
+            SubjectKind::Place | SubjectKind::Query => self != SourceKind::Pinterest,
+            SubjectKind::Board => self == SourceKind::Pinterest,
         }
     }
 
@@ -118,14 +130,23 @@ pub fn build<'a>(
         SourceKind::Unsplash => Box::new(UnsplashSource::new(http, need_key()?)?),
         SourceKind::Pexels => Box::new(PexelsSource::new(http, need_key()?)?),
         SourceKind::Pixabay => Box::new(PixabaySource::new(http, need_key()?)?),
+        SourceKind::Pinterest => Box::new(PinterestSource::new(http)),
     })
 }
 
 /// What to look for.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Search<'a> {
-    Place { place: &'a Place, scope: &'a Scope },
+    Place {
+        place: &'a Place,
+        scope: &'a Scope,
+    },
     Query(&'a str),
+    /// A Pinterest board: its RSS address and the name shown to the user.
+    Board {
+        url: &'a str,
+        name: &'a str,
+    },
 }
 
 impl Search<'_> {
@@ -133,6 +154,7 @@ impl Search<'_> {
         match self {
             Search::Place { .. } => SubjectKind::Place,
             Search::Query(_) => SubjectKind::Query,
+            Search::Board { .. } => SubjectKind::Board,
         }
     }
 
@@ -141,6 +163,7 @@ impl Search<'_> {
         match self {
             Search::Place { place, .. } => &place.label,
             Search::Query(q) => q,
+            Search::Board { name, .. } => name,
         }
     }
 }
@@ -225,6 +248,10 @@ impl Candidate {
             SourceKind::Commons | SourceKind::Openverse => {
                 format!("Photo: {}, {}", self.author, self.license.short_name)
             }
+            SourceKind::Pinterest => match self.author.as_str() {
+                "" | "Pinterest" => "Pinterest".to_owned(),
+                author => format!("Pin by {author} on Pinterest"),
+            },
             // Wallhaven's search API names neither author nor licence.
             SourceKind::Wallhaven => format!(
                 "Wallpaper: Wallhaven #{}",

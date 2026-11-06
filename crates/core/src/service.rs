@@ -29,6 +29,11 @@ const KEY_SUBJECTS: &str = "subjects";
 /// to the UI (it only learns whether a key exists), never logged.
 const KEY_SOURCE_KEYS: &str = "source_keys";
 const KEY_SOURCE_HEALTH: &str = "source_health";
+/// The source that was chosen before a Pinterest board took over, restored when the board is
+/// no longer the active subject.
+const KEY_SOURCE_BEFORE_BOARD: &str = "source_before_board";
+/// Alternatives offered when the chosen source fails.
+pub const MAX_FALLBACKS: usize = 3;
 const MAX_ERROR_CHARS: usize = 200;
 const KEY_SUB_PLACES: &str = "sub_places";
 const SUB_PLACES_TTL_SECS: i64 = 30 * 86_400;
@@ -306,9 +311,17 @@ impl Engine {
     }
 
     pub fn save_settings(&self, settings: Settings) -> Result<Settings> {
-        let settings = settings.sanitized();
+        let mut settings = settings.sanitized();
         let old = self.settings()?;
         let store = self.store()?;
+        // A stale screen must not undo the source a board subject needs (or the other way round).
+        let active = self
+            .load_subjects(&store)?
+            .active_subject()
+            .map(Subject::kind);
+        if active.is_some_and(|k| !settings.source.supports(k)) {
+            settings.source = old.source;
+        }
         store.set_json(KEY_SETTINGS, &settings)?;
         // The queue was assembled under the old search conditions. (Tone is not listed: it is
         // re-checked when a wallpaper is taken from the queue.)
@@ -349,11 +362,37 @@ impl Engine {
     /// Save and clear the queue: it was assembled for another subject.
     fn commit_subjects(&self, store: &Store, subjects: &Subjects, drop_queue: bool) -> Result<()> {
         store.set_json(KEY_SUBJECTS, subjects)?;
-        if drop_queue {
+        let source_changed = self.sync_source(store, subjects)?;
+        if drop_queue || source_changed {
             let settings = self.settings()?;
             self.cache(store, &settings)?.drop_ready()?;
         }
         Ok(())
+    }
+
+    /// Keep the source in line with the active subject: a Pinterest board only works with
+    /// Pinterest, so activating one switches to it (remembering the previous source), and
+    /// leaving boards restores that source. Returns whether the source changed.
+    fn sync_source(&self, store: &Store, subjects: &Subjects) -> Result<bool> {
+        let mut settings = self.settings()?;
+        let kind = subjects.active_subject().map(Subject::kind);
+        let target = match kind {
+            Some(SubjectKind::Board) => SourceKind::Pinterest,
+            Some(_) | None if settings.source == SourceKind::Pinterest => store
+                .get_json::<SourceKind>(KEY_SOURCE_BEFORE_BOARD)?
+                .filter(|k| *k != SourceKind::Pinterest)
+                .unwrap_or(SourceKind::Commons),
+            _ => return Ok(false),
+        };
+        if target == settings.source {
+            return Ok(false);
+        }
+        if target == SourceKind::Pinterest {
+            store.set_json(KEY_SOURCE_BEFORE_BOARD, &settings.source)?;
+        }
+        settings.source = target;
+        store.set_json(KEY_SETTINGS, &settings)?;
+        Ok(true)
     }
 
     pub fn subjects(&self) -> Result<Subjects> {
@@ -382,6 +421,37 @@ impl Engine {
             Some(id) => subjects.active = Some(id),
             None => {
                 subjects.add(SubjectSpec::Query { text });
+            }
+        }
+        self.commit_subjects(&store, &subjects, true)?;
+        Ok(subjects)
+    }
+
+    /// Save a Pinterest board (any board address the user pasted) and make it active. The feed is
+    /// fetched once to check the board exists and to learn its name. Activating a board switches
+    /// the source to Pinterest.
+    pub fn add_board(&self, input: &str) -> Result<Subjects> {
+        let board = source::pinterest::parse_board_url(input)?;
+        let store = self.store()?;
+        let mut subjects = self.load_subjects(&store)?;
+        match subjects.find_board(&board.rss_url).map(|s| s.id.clone()) {
+            Some(id) => subjects.active = Some(id),
+            None => {
+                let body = self.http.get(&board.rss_url, crate::http::MAX_JSON_BYTES)?;
+                let feed = source::pinterest::parse_feed(&body)?;
+                if feed.pins.is_empty() {
+                    return Err(Error::NotFound(
+                        "that board has no pins we can use (is it public?)".into(),
+                    ));
+                }
+                let name = match feed.title.trim() {
+                    "" => board.board.replace(['-', '_'], " "),
+                    t => crate::text::truncate(t, 80),
+                };
+                subjects.add(SubjectSpec::Board {
+                    url: board.rss_url,
+                    name,
+                });
             }
         }
         self.commit_subjects(&store, &subjects, true)?;
@@ -564,6 +634,20 @@ impl Engine {
         ))
     }
 
+    /// Up to [`MAX_FALLBACKS`] sources, other than the chosen one and `exclude`, that can serve
+    /// the active subject right now: no key missing and no failure on record.
+    pub fn fallback_sources(&self, exclude: &[SourceKind]) -> Result<Vec<SourceKind>> {
+        Ok(self
+            .source_statuses()?
+            .into_iter()
+            .filter(|s| {
+                !s.active && !exclude.contains(&s.source) && s.state == SourceState::Available
+            })
+            .map(|s| s.source)
+            .take(MAX_FALLBACKS)
+            .collect())
+    }
+
     fn source<'a>(&'a self, store: &Store, kind: SourceKind) -> Result<Box<dyn Source + 'a>> {
         let key = self.key_for(store, kind)?;
         source::build(kind, self.http.as_ref(), key.as_deref())
@@ -616,6 +700,20 @@ impl Engine {
         target_ready: u32,
         now: i64,
     ) -> Result<PrefetchReport> {
+        let kind = self.settings()?.source;
+        self.prefetch_from(kind, screen, system_dark, target_ready, now)
+    }
+
+    /// [`prefetch`](Self::prefetch) from `kind` instead of the chosen source. The choice itself
+    /// is not touched: this is how a one-time fallback works.
+    pub fn prefetch_from(
+        &self,
+        kind: SourceKind,
+        screen: Screen,
+        system_dark: bool,
+        target_ready: u32,
+        now: i64,
+    ) -> Result<PrefetchReport> {
         let store = self.store()?;
         let settings = self.settings()?;
         let subject = self
@@ -623,7 +721,6 @@ impl Engine {
             .active_subject()
             .cloned()
             .ok_or_else(|| Error::Config("nothing to search for is selected yet".into()))?;
-        let kind = settings.source;
         if !kind.supports(subject.kind()) {
             return Err(Error::Config(format!(
                 "{} cannot serve this kind of subject",
@@ -639,7 +736,7 @@ impl Engine {
         };
         let scope = match &subject.spec {
             SubjectSpec::Place { place } => Some(self.scope_for(place, &settings)),
-            SubjectSpec::Query { .. } => None,
+            SubjectSpec::Query { .. } | SubjectSpec::Board { .. } => None,
         };
         let tone = settings.effective_tone(system_dark);
         let model = store.load_model()?;
@@ -658,6 +755,7 @@ impl Engine {
         let search = match (&subject.spec, &scope) {
             (SubjectSpec::Place { place }, Some(scope)) => Search::Place { place, scope },
             (SubjectSpec::Query { text }, _) => Search::Query(text),
+            (SubjectSpec::Board { url, name }, _) => Search::Board { url, name },
             // A place always has a scope.
             (SubjectSpec::Place { .. }, None) => unreachable!("place without scope"),
         };
@@ -743,6 +841,19 @@ impl Engine {
 
     /// Take the next wallpaper (fetching if the queue is empty) and record it as shown.
     pub fn change_now(&self, screen: Screen, system_dark: bool, now: i64) -> Result<Shown> {
+        self.change_now_with_source(screen, system_dark, now, None)
+    }
+
+    /// [`change_now`](Self::change_now), but an empty queue is refilled from `source_override`
+    /// instead of the chosen source. Used when the chosen source is down. The override is used
+    /// for this call only; the user's choice is never changed.
+    pub fn change_now_with_source(
+        &self,
+        screen: Screen,
+        system_dark: bool,
+        now: i64,
+        source_override: Option<SourceKind>,
+    ) -> Result<Shown> {
         let store = self.store()?;
         let settings = self.settings()?;
         let tone = settings.effective_tone(system_dark);
@@ -750,7 +861,8 @@ impl Engine {
             let cache = self.cache(&store, &settings)?;
             if cache.ready_count_for(tone)? == 0 {
                 drop(cache);
-                self.prefetch(screen, system_dark, 1, now)?;
+                let kind = source_override.unwrap_or(settings.source);
+                self.prefetch_from(kind, screen, system_dark, 1, now)?;
             }
         }
         let cache = self.cache(&store, &settings)?;

@@ -1,7 +1,7 @@
 use wallpaper_core::http::fixture::FixtureHttp;
 use wallpaper_core::source::{
-    self, CandidateRequest, CommonsSource, OpenverseSource, PexelsSource, PixabaySource, Search,
-    Source, SourceKind, UnsplashSource, WallhavenSource,
+    self, CandidateRequest, CommonsSource, OpenverseSource, PexelsSource, PinterestSource,
+    PixabaySource, Search, Source, SourceKind, UnsplashSource, WallhavenSource,
 };
 use wallpaper_core::{GeoPoint, Place, PlaceKind, Scope, SubPlace};
 
@@ -269,14 +269,7 @@ fn commons_query_mode_searches_text_inside_the_curated_categories() {
 }
 
 #[test]
-fn every_source_supports_places_and_queries_today() {
-    use wallpaper_core::SubjectKind;
-    for k in SourceKind::ALL {
-        assert!(
-            k.supports(SubjectKind::Place) && k.supports(SubjectKind::Query),
-            "{k:?}"
-        );
-    }
+fn only_three_sources_need_a_key() {
     assert_eq!(
         SourceKind::ALL.iter().filter(|k| k.needs_key()).count(),
         3,
@@ -495,4 +488,153 @@ fn pixabay_never_leaks_its_key_in_errors() {
         assert!(!msg.contains(key) && !msg.contains("key="), "{msg}");
         assert!(msg.contains("404"), "{msg}");
     }
+}
+
+fn solid_jpeg(w: u32, h: u32) -> Vec<u8> {
+    let img = image::DynamicImage::ImageRgb8(image::RgbImage::from_pixel(
+        w,
+        h,
+        image::Rgb([90, 120, 80]),
+    ));
+    let mut out = Vec::new();
+    image::codecs::jpeg::JpegEncoder::new(&mut out)
+        .encode_image(&img)
+        .unwrap();
+    out
+}
+
+const BOARD_URL: &str = "https://www.pinterest.com/alice/misty-forests.rss";
+
+#[test]
+fn pinterest_board_reads_the_feed_and_probes_sizes() {
+    let http = FixtureHttp::new()
+        .route(&["misty-forests.rss"], fixture("pinterest/board.rss"))
+        // pin 1: the original covers a 1080x2400 screen.
+        .route(&["originals/aa/bb/cc/aaaa1111.jpg"], solid_jpeg(1200, 2600))
+        // pin 2: no original (404) but /1200x/ works and is tall enough for 1080x2400? 1200x2500.
+        .route(&["1200x/dd/ee/ff/bbbb2222.jpg"], solid_jpeg(1200, 2500))
+        // pin 3: the original is a small image.
+        .route(&["originals/11/22/33/cccc3333.jpg"], solid_jpeg(700, 1000));
+    let src = PinterestSource::new(&http);
+    let got = src
+        .candidates(
+            &Search::Board {
+                url: BOARD_URL,
+                name: "Misty & quiet forests",
+            },
+            &phone(),
+        )
+        .unwrap();
+    let ids: Vec<_> = got.iter().map(|c| c.id.as_str()).collect();
+    assert_eq!(
+        ids,
+        ["pinterest:111111111111111", "pinterest:222222222222222"]
+    );
+
+    let a = &got[0];
+    assert_eq!(
+        a.image_url,
+        "https://i.pinimg.com/originals/aa/bb/cc/aaaa1111.jpg"
+    );
+    assert_eq!(
+        a.preview_url,
+        "https://i.pinimg.com/736x/aa/bb/cc/aaaa1111.jpg"
+    );
+    assert_eq!((a.width, a.height), (1200, 2600));
+    assert_eq!(a.page_url, "https://www.pinterest.com/pin/111111111111111/");
+    assert_eq!(a.place_label, "Pinterest: Misty & quiet forests");
+    assert_eq!(a.author, "Bob Photographer");
+    assert_eq!(a.credit_line(), "Pin by Bob Photographer on Pinterest");
+    assert_eq!(a.description.as_deref(), Some("Pine fog"));
+
+    // Fallback to /1200x/ when the original cannot be fetched; no author in the feed.
+    let b = &got[1];
+    assert_eq!(
+        b.image_url,
+        "https://i.pinimg.com/1200x/dd/ee/ff/bbbb2222.jpg"
+    );
+    assert_eq!(
+        b.preview_url,
+        "https://i.pinimg.com/736x/dd/ee/ff/bbbb2222.jpg"
+    );
+    assert_eq!(b.credit_line(), "Pinterest");
+    assert_eq!(src.sized_url(b, 1080, 2400), b.image_url);
+
+    // Only the board feed and image headers were requested; the GIF and the text-only pin
+    // never cost a request. Header probes are ranged.
+    let urls = http.requests();
+    assert!(
+        urls.iter()
+            .all(|u| !u.contains("dddd4444") && !u.contains("555555")),
+        "{urls:?}"
+    );
+    assert!(urls
+        .iter()
+        .any(|u| u.contains("originals/11/22/33/cccc3333.jpg")));
+    let probe = urls.iter().position(|u| u.contains("aaaa1111")).unwrap();
+    assert!(http
+        .headers(probe)
+        .iter()
+        .any(|(k, v)| k == "Range" && v == "bytes=0-65535"));
+
+    // The same source does not probe twice (refill rounds).
+    let before = http.requests().len();
+    src.candidates(
+        &Search::Board {
+            url: BOARD_URL,
+            name: "x",
+        },
+        &phone(),
+    )
+    .unwrap();
+    assert_eq!(http.requests().len(), before + 1, "only the feed again");
+}
+
+#[test]
+fn pinterest_drops_what_does_not_cover_the_screen() {
+    let http = FixtureHttp::new()
+        .route(&["misty-forests.rss"], fixture("pinterest/board.rss"))
+        .route(&["originals/aa/bb/cc/aaaa1111.jpg"], solid_jpeg(1200, 2600))
+        .route(&["1200x/dd/ee/ff/bbbb2222.jpg"], solid_jpeg(1200, 2500))
+        .route(&["originals/11/22/33/cccc3333.jpg"], solid_jpeg(700, 1000));
+    let src = PinterestSource::new(&http);
+    // A big tablet-like screen: nothing is large enough.
+    let big = CandidateRequest::new(1600, 2560);
+    let got = src
+        .candidates(
+            &Search::Board {
+                url: BOARD_URL,
+                name: "b",
+            },
+            &big,
+        )
+        .unwrap();
+    assert!(got.is_empty());
+    // A small screen: the 700x1000 pin qualifies too.
+    let small = CandidateRequest::new(640, 960);
+    let got = src
+        .candidates(
+            &Search::Board {
+                url: BOARD_URL,
+                name: "b",
+            },
+            &small,
+        )
+        .unwrap();
+    assert_eq!(got.len(), 3);
+}
+
+#[test]
+fn pinterest_serves_boards_only() {
+    use wallpaper_core::SubjectKind;
+    for k in SourceKind::ALL {
+        assert_eq!(k.supports(SubjectKind::Board), k == SourceKind::Pinterest);
+        assert_eq!(
+            k.supports(SubjectKind::Place) || k.supports(SubjectKind::Query),
+            k != SourceKind::Pinterest
+        );
+    }
+    let http = FixtureHttp::new();
+    let src = PinterestSource::new(&http);
+    assert!(src.candidates(&Search::Query("fog"), &phone()).is_err());
 }

@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Misty &amp; quiet forests</title>
+    <link>https://www.pinterest.com/alice/misty-forests/</link>
+    <description>Foggy places</description>
+    <item>
+      <title>Pine fog</title>
+      <link>https://www.pinterest.com/pin/111111111111111/</link>
+      <description>&lt;a href="https://www.pinterest.com/pin/111111111111111/"&gt;&lt;img src="https://i.pinimg.com/236x/aa/bb/cc/aaaa1111.jpg"&gt;&lt;/a&gt;Pine fog &amp;amp; light</description>
+      <dc:creator>Bob Photographer</dc:creator>
+      <pubDate>Thu, 05 Nov 2026 10:00:00 +0000</pubDate>
+    </item>
+    <item>
+      <title>Original is gone, 1200 is fine</title>
+      <link>https://www.pinterest.com/pin/222222222222222/</link>
+      <description><![CDATA[<a href="https://www.pinterest.com/pin/222222222222222/"><img src="https://i.pinimg.com/236x/dd/ee/ff/bbbb2222.jpg"></a>]]></description>
+    </item>
+    <item>
+      <title>Too small</title>
+      <link>https://www.pinterest.com/pin/333333333333333/</link>
+      <description>&lt;img src="https://i.pinimg.com/236x/11/22/33/cccc3333.jpg"&gt;</description>
+    </item>
+    <item>
+      <title>Animated</title>
+      <link>https://www.pinterest.com/pin/444444444444444/</link>
+      <description>&lt;img src="https://i.pinimg.com/236x/44/55/66/dddd4444.gif"&gt;</description>
+    </item>
+    <item>
+      <title>No picture</title>
+      <link>https://www.pinterest.com/pin/555555555555555/</link>
+      <description>&lt;p&gt;only text&lt;/p&gt;</description>
+    </item>
+  </channel>
+</rss>
