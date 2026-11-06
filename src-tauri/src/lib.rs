@@ -10,10 +10,11 @@ use serde::Serialize;
 use tauri::Manager;
 use wallpaper_core::analysis::Swatch;
 use wallpaper_core::pipeline::Screen;
-use wallpaper_core::service::{CacheInfo, Engine, Settings};
+use wallpaper_core::service::{CacheInfo, Engine, Settings, SourceStatus};
+use wallpaper_core::source::SourceKind;
 use wallpaper_core::store::HistoryEntry;
 use wallpaper_core::theme::Theme;
-use wallpaper_core::{Error, Place, PlaceHit};
+use wallpaper_core::{Error, Place, PlaceHit, Subjects};
 
 /// Error shape the UI can switch on (and translate) without parsing messages.
 #[derive(Debug, Serialize)]
@@ -149,6 +150,68 @@ async fn select_place(
 }
 
 #[tauri::command]
+async fn subjects(engine: tauri::State<'_, Engine>) -> CmdResult<Subjects> {
+    let e = engine.inner().clone();
+    blocking(move || e.subjects()).await
+}
+
+#[tauri::command]
+async fn add_query_subject(engine: tauri::State<'_, Engine>, text: String) -> CmdResult<Subjects> {
+    let e = engine.inner().clone();
+    blocking(move || e.add_query(&text)).await
+}
+
+#[tauri::command]
+async fn update_query_subject(
+    engine: tauri::State<'_, Engine>,
+    id: String,
+    text: String,
+) -> CmdResult<Subjects> {
+    let e = engine.inner().clone();
+    blocking(move || e.update_query(&id, &text)).await
+}
+
+#[tauri::command]
+async fn select_subject(engine: tauri::State<'_, Engine>, id: String) -> CmdResult<Subjects> {
+    let e = engine.inner().clone();
+    blocking(move || e.select_subject(&id)).await
+}
+
+#[tauri::command]
+async fn delete_subject(engine: tauri::State<'_, Engine>, id: String) -> CmdResult<Subjects> {
+    let e = engine.inner().clone();
+    blocking(move || e.delete_subject(&id)).await
+}
+
+/// What is known about each source without touching the network.
+#[tauri::command]
+async fn source_statuses(engine: tauri::State<'_, Engine>) -> CmdResult<Vec<SourceStatus>> {
+    let e = engine.inner().clone();
+    blocking(move || e.source_statuses()).await
+}
+
+/// One lightweight request to the source (short timeout) and its updated status.
+#[tauri::command]
+async fn check_source(
+    engine: tauri::State<'_, Engine>,
+    source: SourceKind,
+) -> CmdResult<SourceStatus> {
+    let e = engine.inner().clone();
+    blocking(move || e.check_source(source, Engine::now())).await
+}
+
+/// Save (or, with no key, remove) the user's API key for a source. Never echoed back.
+#[tauri::command]
+async fn set_source_key(
+    engine: tauri::State<'_, Engine>,
+    source: SourceKind,
+    key: Option<String>,
+) -> CmdResult<()> {
+    let e = engine.inner().clone();
+    blocking(move || e.set_source_key(source, key)).await
+}
+
+#[tauri::command]
 async fn current_wallpaper(
     engine: tauri::State<'_, Engine>,
     dark: bool,
@@ -277,6 +340,14 @@ pub fn run() {
             selected_place,
             search_places,
             select_place,
+            subjects,
+            add_query_subject,
+            update_query_subject,
+            select_subject,
+            delete_subject,
+            source_statuses,
+            check_source,
+            set_source_key,
             current_wallpaper,
             change_now,
             reapply_wallpaper,
