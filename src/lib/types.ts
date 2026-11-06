@@ -3,7 +3,10 @@
 export type Tone = 'any' | 'dark' | 'light';
 export type Lang = 'auto' | 'ru' | 'en';
 export type CaptionAlign = 'left' | 'center' | 'right';
-export type Route = 'today' | 'place' | 'look' | 'schedule' | 'history';
+export type Route = 'today' | 'place' | 'sources' | 'look' | 'schedule' | 'history';
+
+/** Where photos come from. Same strings as `SourceKind` in crates/core. */
+export type SourceId = 'commons' | 'openverse' | 'wallhaven' | 'unsplash' | 'pexels' | 'pixabay';
 
 export interface Settings {
   tone: Tone;
@@ -13,7 +16,8 @@ export interface Settings {
   change_time: string;
   wifi_only: boolean;
   cache_mb: number;
-  unsplash_enabled: boolean;
+  /** The single source photos come from (sources are never mixed). */
+  source: SourceId;
   lang: Lang;
   /** Draw the place name and credit on the wallpaper. */
   caption_enabled: boolean;
@@ -42,6 +46,29 @@ export interface Place extends PlaceHit {
   commons_category: string | null;
 }
 
+/** A saved thing to show: a place, or free text. (Pinterest boards will be a third kind.) */
+export type Subject = { id: string } & ({ kind: 'place'; place: Place } | { kind: 'query'; text: string });
+
+export interface Subjects {
+  items: Subject[];
+  /** Id of the active subject. */
+  active: string | null;
+}
+
+export type SourceState = 'available' | 'needs_key' | 'unreachable' | 'unsupported';
+
+export interface SourceStatus {
+  source: SourceId;
+  state: SourceState;
+  needs_key: boolean;
+  has_key: boolean;
+  active: boolean;
+  /** Last error, when the last request failed. */
+  error: string | null;
+  /** Unix seconds of the last request. */
+  checked_at: number | null;
+}
+
 export type Rgb = [number, number, number];
 
 export interface Swatch {
@@ -56,7 +83,7 @@ export interface License {
 }
 
 export interface Candidate {
-  source: 'commons' | 'unsplash';
+  source: SourceId;
   id: string;
   title: string;
   description: string | null;

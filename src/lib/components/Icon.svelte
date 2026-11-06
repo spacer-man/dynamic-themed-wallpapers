@@ -9,7 +9,10 @@
     | 'close'
     | 'refresh'
     | 'info'
-    | 'search';
+    | 'search'
+    | 'edit'
+    | 'trash'
+    | 'check';
 
   let { name, size = 24, filled = false }: { name: Name; size?: number; filled?: boolean } = $props();
 
@@ -24,6 +27,9 @@
     close: 'M6 6l12 12 M18 6L6 18',
     refresh: 'M19.5 12a7.5 7.5 0 1 1-2.2-5.3 M19.5 4.5v4.8h-4.8',
     info: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M12 11v5.5 M12 7.6v.01',
+    edit: 'M4 20h4L19 9l-4-4L4 16z M13.5 6.5l4 4',
+    trash: 'M5 7h14 M9 7V4h6v3 M7 7l1 13h8l1-13',
+    check: 'M5 12.5l4.5 4.5L19 7',
     search: 'M10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13z M20 20l-4.8-4.8',
   };
 </script>

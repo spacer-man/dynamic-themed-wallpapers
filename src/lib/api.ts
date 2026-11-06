@@ -11,6 +11,9 @@ import type {
   PlaceHit,
   ScreenSize,
   Settings,
+  SourceId,
+  SourceStatus,
+  Subjects,
   Swatch,
   Theme,
   Wallpaper,
@@ -47,9 +50,17 @@ export function screenSize(): ScreenSize {
 export const api = {
   getSettings: () => call<Settings>('get_settings'),
   saveSettings: (settings: Settings) => call<Settings>('save_settings', { settings }),
-  selectedPlace: () => call<Place | null>('selected_place'),
   searchPlaces: (query: string, lang: string) => call<PlaceHit[]>('search_places', { query, lang }),
   selectPlace: (qid: string, lang: string) => call<Place>('select_place', { qid, lang }),
+  subjects: () => call<Subjects>('subjects'),
+  addQuerySubject: (text: string) => call<Subjects>('add_query_subject', { text }),
+  updateQuerySubject: (id: string, text: string) => call<Subjects>('update_query_subject', { id, text }),
+  selectSubject: (id: string) => call<Subjects>('select_subject', { id }),
+  deleteSubject: (id: string) => call<Subjects>('delete_subject', { id }),
+  sourceStatuses: () => call<SourceStatus[]>('source_statuses'),
+  checkSource: (source: SourceId) => call<SourceStatus>('check_source', { source }),
+  /** `null` removes the key. The key is never read back. */
+  setSourceKey: (source: SourceId, key: string | null) => call<void>('set_source_key', { source, key }),
   currentWallpaper: (dark: boolean) => call<Wallpaper | null>('current_wallpaper', { dark }),
   changeNow: (systemDark: boolean) =>
     call<Wallpaper | null>('change_now', { systemDark, screen: screenSize() }),

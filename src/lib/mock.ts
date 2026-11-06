@@ -11,6 +11,11 @@ import type {
   PlaceHit,
   Rgb,
   Settings,
+  SourceId,
+  SourceState,
+  SourceStatus,
+  Subject,
+  Subjects,
   Swatch,
   Theme,
   Wallpaper,
@@ -99,9 +104,17 @@ const PLACES: Place[] = [
 
 const RU: Record<string, string> = { Japan: 'Япония', Kyoto: 'Киото', 'Mount Fuji': 'Фудзияма', Tokyo: 'Токио', Shibuya: 'Сибуя', 'Hōryū-ji': 'Хорю-дзи' };
 
+/** What the mock remembers per source: a key and the outcome of the last request. */
+interface MockSource {
+  key: string | null;
+  error: string | null;
+  checked_at: number | null;
+}
+
 interface MockDb {
   settings: Settings;
-  place: Place | null;
+  subjects: Subjects;
+  sources: Partial<Record<SourceId, MockSource>>;
   history: { id: number; shown_at: number; scene: string; liked: boolean | null }[];
   nextId: number;
 }
@@ -113,7 +126,7 @@ const DEFAULT_SETTINGS: Settings = {
   change_time: '08:00',
   wifi_only: true,
   cache_mb: 150,
-  unsplash_enabled: false,
+  source: 'commons',
   lang: 'auto',
   caption_enabled: true,
   caption_y: 94,
@@ -122,14 +135,41 @@ const DEFAULT_SETTINGS: Settings = {
 
 const KEY = 'dtw-mock-db';
 
+const EMPTY_SUBJECTS = (): Subjects => ({ items: [], active: null });
+
+const NEEDS_KEY: SourceId[] = ['unsplash', 'pexels', 'pixabay'];
+
+/** Databases saved by earlier versions had `place` and `unsplash_enabled`; bring them forward. */
+export function migrateDb(raw: Record<string, unknown>): MockDb {
+  const old = raw as Partial<MockDb> & { place?: Place | null; settings?: Record<string, unknown> };
+  const settings = { ...DEFAULT_SETTINGS, ...(old.settings as Partial<Settings>) } as Settings & {
+    unsplash_enabled?: boolean;
+  };
+  if (settings.unsplash_enabled && !(old.settings && 'source' in old.settings)) settings.source = 'unsplash';
+  delete settings.unsplash_enabled;
+  let subjects = old.subjects;
+  if (!subjects) {
+    subjects = EMPTY_SUBJECTS();
+    if (old.place) {
+      subjects.items.push({ id: 's1', kind: 'place', place: old.place });
+      subjects.active = 's1';
+    }
+  }
+  return { settings, subjects, sources: old.sources ?? {}, history: old.history ?? [], nextId: old.nextId ?? 1 };
+}
+
 function load(): MockDb {
   try {
     const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(KEY) : null;
-    if (raw) return JSON.parse(raw) as MockDb;
+    if (raw) return migrateDb(JSON.parse(raw) as Record<string, unknown>);
   } catch {
     /* fall through to defaults */
   }
-  return { settings: { ...DEFAULT_SETTINGS }, place: null, history: [], nextId: 1 };
+  return fresh();
+}
+
+function fresh(): MockDb {
+  return { settings: { ...DEFAULT_SETTINGS }, subjects: EMPTY_SUBJECTS(), sources: {}, history: [], nextId: 1 };
 }
 
 let db = load();
@@ -139,7 +179,7 @@ let db = load();
   const q = typeof location !== 'undefined' ? new URLSearchParams(location.search) : null;
   const scene = q?.get('scene');
   if (q && scene && SCENES.some((s) => s.id === scene)) {
-    db = { settings: { ...DEFAULT_SETTINGS }, place: { ...PLACES[1]! }, nextId: 2, history: [] };
+    db = { ...fresh(), subjects: { items: [{ id: 's1', kind: 'place', place: { ...PLACES[1]! } }], active: 's1' }, nextId: 2 };
     db.history = [{ id: 1, shown_at: Math.floor(Date.now() / 1000), scene, liked: q.get('liked') === '1' ? true : null }];
     for (const [i, id] of ['s4', 's2', 's5', 's1'].entries()) {
       if (id !== scene) db.history.unshift({ id: 10 + i, shown_at: Math.floor(Date.now() / 1000) - 86400 * (i + 1), scene: id, liked: i % 2 === 0 ? true : false });
@@ -160,9 +200,15 @@ function fail(kind: ErrorKind, message: string): never {
   throw { kind, message };
 }
 
-function candidate(s: Scene, place: Place): Candidate {
+function activeSubject(): Subject | null {
+  return db.subjects.items.find((x) => x.id === db.subjects.active) ?? null;
+}
+
+const subjectLabel = (x: Subject | null): string => (x ? (x.kind === 'place' ? x.place.label : x.text) : 'Sample');
+
+function candidate(s: Scene, label: string, coords: Place['coords']): Candidate {
   return {
-    source: 'commons',
+    source: db.settings.source,
     id: `mock:${s.id}`,
     title: s.title,
     description: null,
@@ -174,17 +220,22 @@ function candidate(s: Scene, place: Place): Candidate {
     author: 'Sample Author',
     author_url: null,
     license: { short_name: 'CC BY-SA 4.0 (sample)', url: 'https://creativecommons.org/licenses/by-sa/4.0', attribution_required: true },
-    coords: place.coords,
-    place_label: place.label,
+    coords,
+    place_label: label,
   };
 }
+
+const activePlace = (): Place | null => {
+  const a = activeSubject();
+  return a?.kind === 'place' ? a.place : null;
+};
 
 function toEntry(h: MockDb['history'][number]): HistoryEntry {
   const s = SCENES.find((x) => x.id === h.scene)!;
   return {
     id: h.id,
     shown_at: h.shown_at,
-    candidate: candidate(s, db.place ?? PLACES[0]!),
+    candidate: candidate(s, subjectLabel(activeSubject()), activePlace()?.coords ?? null),
     palette: palette(s),
     liked: h.liked,
   };
@@ -198,6 +249,38 @@ function wallpaper(dark: boolean): Wallpaper | null {
   return { entry, theme: mockTheme(entry.palette, dark), image: sceneImage(s) };
 }
 
+function sourceStatus(id: SourceId): SourceStatus {
+  const m = db.sources[id];
+  const needsKey = NEEDS_KEY.includes(id);
+  const hasKey = !!m?.key;
+  // Every source can serve places (by label) and queries today; boards will not be.
+  const unsupported = false;
+  const state: SourceState = unsupported
+    ? 'unsupported'
+    : needsKey && !hasKey
+      ? 'needs_key'
+      : m?.error
+        ? 'unreachable'
+        : 'available';
+  return {
+    source: id,
+    state,
+    needs_key: needsKey,
+    has_key: hasKey,
+    active: db.settings.source === id,
+    error: m?.error ?? null,
+    checked_at: m?.checked_at ?? null,
+  };
+}
+
+const SOURCE_IDS: SourceId[] = ['commons', 'openverse', 'wallhaven', 'unsplash', 'pexels', 'pixabay'];
+
+function normalizeQuery(text: unknown): string {
+  const q = String(text).replace(/\s+/g, ' ').trim();
+  if ([...q].length < 2 || [...q].length > 80) fail('config', 'a search text needs 2–80 characters');
+  return q;
+}
+
 export async function mockCall(cmd: string, a: Record<string, unknown>): Promise<unknown> {
   switch (cmd) {
     case 'reapply_wallpaper':
@@ -205,12 +288,75 @@ export async function mockCall(cmd: string, a: Record<string, unknown>): Promise
     case 'get_settings':
       return db.settings;
     case 'save_settings': {
-      db.settings = { ...DEFAULT_SETTINGS, ...(a.settings as Settings) };
+      const next = { ...DEFAULT_SETTINGS, ...(a.settings as Settings) };
+      if (!SOURCE_IDS.includes(next.source)) next.source = 'commons';
+      db.settings = next;
       save();
       return db.settings;
     }
     case 'selected_place':
-      return db.place;
+      return activePlace();
+    case 'subjects':
+      return db.subjects;
+    case 'add_query_subject': {
+      const text = normalizeQuery(a.text);
+      const same = db.subjects.items.find((x) => x.kind === 'query' && x.text.toLowerCase() === text.toLowerCase());
+      if (same) db.subjects.active = same.id;
+      else {
+        const id = `s${Math.max(0, ...db.subjects.items.map((x) => Number(x.id.slice(1)) || 0)) + 1}`;
+        db.subjects.items.push({ id, kind: 'query', text });
+        db.subjects.active = id;
+      }
+      save();
+      return db.subjects;
+    }
+    case 'update_query_subject': {
+      const text = normalizeQuery(a.text);
+      const x = db.subjects.items.find((i) => i.id === a.id) ?? fail('not_found', 'no saved subject');
+      if (x.kind !== 'query') fail('config', 'only a search text can be edited');
+      x.text = text;
+      save();
+      return db.subjects;
+    }
+    case 'select_subject': {
+      if (!db.subjects.items.some((i) => i.id === a.id)) fail('not_found', 'no saved subject');
+      db.subjects.active = String(a.id);
+      save();
+      return db.subjects;
+    }
+    case 'delete_subject': {
+      if (!db.subjects.items.some((i) => i.id === a.id)) fail('not_found', 'no saved subject');
+      db.subjects.items = db.subjects.items.filter((i) => i.id !== a.id);
+      if (db.subjects.active === a.id) db.subjects.active = db.subjects.items[0]?.id ?? null;
+      save();
+      return db.subjects;
+    }
+    case 'source_statuses':
+      return SOURCE_IDS.map(sourceStatus);
+    case 'check_source': {
+      const id = a.source as SourceId;
+      if (!SOURCE_IDS.includes(id)) fail('config', 'unknown source');
+      const m = (db.sources[id] ??= { key: null, error: null, checked_at: null });
+      if (NEEDS_KEY.includes(id) && !m.key) return sourceStatus(id);
+      await sleep(400);
+      // Demo: a key that starts with "bad" is rejected, so the "unreachable" state can be seen.
+      m.error = m.key?.startsWith('bad') ? 'HTTP 401 from the service' : null;
+      m.checked_at = Math.floor(Date.now() / 1000);
+      save();
+      return sourceStatus(id);
+    }
+    case 'set_source_key': {
+      const id = a.source as SourceId;
+      if (!NEEDS_KEY.includes(id)) fail('config', 'this source does not use a key');
+      const m = (db.sources[id] ??= { key: null, error: null, checked_at: null });
+      const key = a.key == null ? '' : String(a.key).trim();
+      if (key && !/^[A-Za-z0-9_-]{16,128}$/.test(key)) fail('config', 'API key looks malformed');
+      m.key = key || null;
+      m.error = null;
+      m.checked_at = null;
+      save();
+      return null;
+    }
     case 'search_places': {
       await sleep(350);
       const q = String(a.query).trim().toLowerCase();
@@ -223,14 +369,25 @@ export async function mockCall(cmd: string, a: Record<string, unknown>): Promise
     case 'select_place': {
       await sleep(250);
       const p = PLACES.find((x) => x.qid === a.qid) ?? fail('not_found', 'unknown place');
-      db.place = { ...p, label: a.lang === 'ru' ? (RU[p.label] ?? p.label) : p.label };
+      const place = { ...p, label: a.lang === 'ru' ? (RU[p.label] ?? p.label) : p.label };
+      const same = db.subjects.items.find((x) => x.kind === 'place' && x.place.qid === p.qid);
+      if (same && same.kind === 'place') {
+        same.place = place;
+        db.subjects.active = same.id;
+      } else {
+        const id = `s${Math.max(0, ...db.subjects.items.map((x) => Number(x.id.slice(1)) || 0)) + 1}`;
+        db.subjects.items.push({ id, kind: 'place', place });
+        db.subjects.active = id;
+      }
       save();
-      return db.place;
+      return place;
     }
     case 'current_wallpaper':
       return wallpaper(Boolean(a.dark));
     case 'change_now': {
-      if (!db.place) fail('config', 'no place selected yet');
+      if (!activeSubject()) fail('config', 'nothing to search for is selected yet');
+      const st = sourceStatus(db.settings.source);
+      if (st.state === 'needs_key') fail('config', 'this source needs an API key');
       await sleep(900);
       const tone = db.settings.follow_system_theme ? (a.systemDark ? 'dark' : 'light') : db.settings.tone;
       const shown = new Set(db.history.map((h) => h.scene));
@@ -278,7 +435,7 @@ export async function mockCall(cmd: string, a: Record<string, unknown>): Promise
 
 /** Test hook: start from a clean database. */
 export function resetMock() {
-  db = { settings: { ...DEFAULT_SETTINGS }, place: null, history: [], nextId: 1 };
+  db = fresh();
 }
 
 export const MOCK_SCENES = SCENES;

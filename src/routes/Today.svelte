@@ -91,7 +91,7 @@
     </div>
   {:else}
     <div class="empty">
-      {#if !app.place}
+      {#if !app.activeSubject}
         <div class="card">
           <h1>{t('today.empty.title')}</h1>
           <p class="hint">{t('today.empty.text')}</p>
@@ -100,7 +100,7 @@
       {:else}
         <div class="card">
           <h1>{t('today.first.title')}</h1>
-          <p class="hint">{t('today.first.text', { place: app.place.label })}</p>
+          <p class="hint">{t('today.first.text', { place: app.activeLabel })}</p>
           <button class="btn primary" onclick={() => app.changeNow()} disabled={app.busy}>
             {t('today.first.cta')}
           </button>
