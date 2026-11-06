@@ -17,12 +17,19 @@ This is the complete list. Adding an endpoint requires updating this file in the
 | `api.unsplash.com`, `images.unsplash.com` | **only if you pick Unsplash and enter your own key** | search words, your key |
 | `api.pexels.com`, `images.pexels.com` | **only if you pick Pexels and enter your own key** | search words, your key (header) |
 | `pixabay.com`, `cdn.pixabay.com` | **only if you pick Pixabay and enter your own key** | search words, screen size, your key (in the URL; scrubbed from errors) |
+| `www.pinterest.com` | **only if you pick Pinterest** (adding a board) | the board address you pasted (`/<user>/<board>.rss`); `robots.txt` for the availability check |
+| `i.pinimg.com` | **only if you pick Pinterest** | the pin images: the first 64 KB of each (to read its size), then the previews and the chosen photo |
 
 Only the source you picked is contacted. "Check all" in the source settings sends one small request to each source that
 is usable (no request to a key source without a key). Free-text subjects are sent to the chosen source as search words.
 
 All requests carry a generic `User-Agent` naming the app and its repository, as Wikimedia's policy requires. No device
 identifiers, no account data.
+
+## Notifications
+
+If the scheduled change cannot get a photo, the app can show a local notification offering another source. Nothing is sent
+anywhere for this. Android 13+ asks for the notification permission when you set the schedule time, never at app start.
 
 ## What stays on the device
 

@@ -25,8 +25,8 @@ Decisions taken without the owner go to `docs/OPEN-QUESTIONS.md`.
 3. **Source framework.** Common source trait for query-based sources, per-source status, source picker and key fields
    in settings, query mode next to place mode. Commons keeps its curated place search.
 4. **New sources.** Openverse, Wallhaven, Pexels, Pixabay — with licence/author captions and minimum-size filter.
-5. **Pinterest boards.** Board URL in settings → RSS → original image URLs → size filter.
-6. **Fallback notification.** Background refresh failure → notification with a choice of another available source.
+5. **Pinterest boards.** Board URL in settings → RSS → original image URLs → size filter. *(done, see OPEN-QUESTIONS Q18–Q22)*
+6. **Fallback notification.** Background refresh failure → notification with a choice of another available source. *(done, see Q23–Q26)*
 7. **Docs.** `docs/sources.md`, READMEs (en/ru), privacy notes for new hosts.
 
 ## How the work runs

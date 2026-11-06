@@ -121,3 +121,71 @@ Openverse thumbnails are about 600 px, below the ~1000 px preview used elsewhere
 
 `src-tauri` is not compiled here (gtk missing), the UI was not looked at in a browser (none installed), and no live API
 was called: all source behaviour rests on recorded-style fixtures written from the API docs as remembered.
+
+## Q18. `pin.it` short links are not resolved
+
+The task said "if cheap". Following a short link needs the final URL after a redirect, which the `HttpClient` trait does not
+expose, and a `pin.it` link usually points at a single pin, not a board. **Applied:** only full board addresses are accepted
+(`pinterest.com`, country domains and subdomains, `.co.uk`/`.com.au` style); a `pin.it` link gets a message asking for the
+board address. **Recommended:** keep.
+
+## Q19. A board and the Pinterest source are tied together in the engine
+
+Pinterest serves only boards and a board works only with Pinterest. **Applied (simplest clear UX):** the engine switches the
+source. Activating a board (adding or selecting it) sets `Settings.source = pinterest` and remembers the previous source;
+activating a place or words (or deleting the board) restores it (default Commons). `save_settings` refuses to move the source
+away from what the active subject needs (it keeps the old one), so a stale screen cannot break it. In the UI every other
+source shows "does not support this subject" with a line explaining why, and the board form says that adding one switches the
+source. Doing it in the engine means the background worker is consistent too.
+
+## Q20. Pinterest sizes come from header reads; what gets dropped
+
+Sizes are read from the first 64 KB of each image (`Range` request; the decoder reads JPEG/PNG headers, not WebP/GIF, so a
+`.webp` original falls back to `/1200x/` then `/736x/`, which are tried with the extension from the feed). That is up to 25
+small requests per refill (six in parallel, remembered within one refill, repeated on the next refill). Per the agreed rule
+anything not covering the screen at its best working size is dropped, which on a phone leaves only large pins. **Recommended:**
+if too many pins are dropped in practice, consider allowing the `/1200x/` size to count only when the screen is smaller than it.
+
+## Q21. Pinterest caption, author and licence
+
+Caption on the wallpaper is "Pinterest: <board name>" (no pin title). The author is taken from `dc:creator`/`author`/`creator`
+in the feed if present; I do not know that Pinterest's RSS has one, so the credit is usually just "Pinterest" ("Pin by X on
+Pinterest" when there is an author). Licence: "No licence stated". The check request is `robots.txt` on `www.pinterest.com`
+(no board is known to the source at check time). The pin id, the feed and Pinterest's behaviour towards non-browser clients
+(403, rate limits, format changes) are from memory and **not verified against the live service**.
+
+## Q22. Pinterest and the "latest ~25 pins" limit
+
+A board with fewer large pins than this may often fail with "no suitable photo"; pins already shown are not repeated, so a
+small board runs dry quickly. The hint in the UI and `docs/sources.md` say the feed holds only the latest pins.
+
+## Q23. When the failure notification is posted, and what it offers
+
+Posted by the worker after the **last** WorkManager retry of a `change` (or at once for a non-retryable failure) when the error
+is about the source: network, HTTP status, "no suitable photo", unparsable answer. Not for a missing subject, storage or image
+errors, and not for prefetch. Alternatives are the sources with state *available* for the active subject, other than the failed
+one: a key source without a key and any source with a failure on record are left out (so after a failure, sources never checked
+are offered). At most three. "Retry later" queues one more change in an hour. A notification button only queues work; the
+actual change runs in the same worker (`change:<source id>`). Text is English or Russian by the language setting (`auto` uses
+the device language); the channel has low importance (no sound); the icon is a system drawable.
+
+## Q24. Notification permission has no "enable schedule" moment
+
+There is no on/off switch for the schedule (it is always on). **Applied:** the permission dialog is requested when the user
+changes the schedule time, and the Schedule screen shows a button while notifications are off. The call returns immediately
+(the dialog's answer is read again a few seconds later); nothing is requested at app start.
+
+## Q25. Opening the app on the Sources screen
+
+The notification starts `MainActivity` with an extra; `onNewIntent` keeps it, the plugin command `launchRoute` returns it once,
+and the UI asks at start and every time the page becomes visible. A tap while the app is already in front may not switch the
+screen until the page is visible again.
+
+## Q26. Not verified here (stages 5–6)
+
+`src-tauri` and the Kotlin code were not compiled (no gtk, no Android SDK); `worker.rs` was compiled and its tests run in a
+scratch crate. Overridden signatures (`onNewIntent`, `Plugin` commands), the manifest receiver and the R8 keep rule for
+`FallbackReceiver` need a real build. The UI was not looked at in a browser. Pinterest and its RSS were never contacted; all
+Pinterest behaviour rests on fixtures from the described format. A one-time fallback photo is recorded in the history with its
+own source, and the next prefetch goes back to the chosen source.
+
