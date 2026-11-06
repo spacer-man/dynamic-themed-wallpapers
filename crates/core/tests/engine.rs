@@ -32,7 +32,11 @@ fn scratch(name: &str) -> PathBuf {
 
 /// Distinct low-frequency pattern per `k`, so the photos don't count as near-duplicates.
 fn photo(k: u32, base: u8) -> Vec<u8> {
-    let img = RgbImage::from_fn(640, 480, |x, y| {
+    photo_sized(k, base, 640, 480)
+}
+
+fn photo_sized(k: u32, base: u8, w: u32, h: u32) -> Vec<u8> {
+    let img = RgbImage::from_fn(w, h, |x, y| {
         let (fx, fy) = (6.0 + k as f32 * 7.0, 9.0 + k as f32 * 5.0);
         let wave = ((x as f32 / fx).sin() * 40.0 + (y as f32 / fy).cos() * 40.0) as i32;
         let n = ((x.wrapping_mul(2654435761) ^ y.wrapping_mul(40503) ^ k) >> 24) as i32 / 16 - 8;
@@ -665,4 +669,132 @@ fn changing_the_source_drops_the_queue() {
         })
         .unwrap();
     assert_eq!(engine.cache_info().unwrap().ready, 0);
+}
+
+/// Taller than the test screen, and sharp enough for the blur check at preview size.
+fn tall_photo(k: u32, base: u8) -> Vec<u8> {
+    let img = RgbImage::from_fn(600, 1300, |x, y| {
+        let wave = ((x as f32 / (3.0 + k as f32)).sin()
+            * (y as f32 / (4.0 + 2.0 * k as f32)).cos()
+            * 70.0) as i32;
+        let v = (base as i32 + wave).clamp(0, 255) as u8;
+        Rgb([v, (v as i32 * 3 / 4) as u8, 120])
+    });
+    let mut out = Vec::new();
+    JpegEncoder::new_with_quality(&mut out, 90)
+        .encode_image(&DynamicImage::ImageRgb8(img))
+        .unwrap();
+    out
+}
+
+fn pinterest_world() -> FixtureHttp {
+    FixtureHttp::new()
+        .route(&["misty-forests.rss"], fixture("pinterest/board.rss"))
+        .route(&["aaaa1111.jpg"], tall_photo(1, 90))
+        .route(&["bbbb2222.jpg"], tall_photo(2, 100))
+        .route(&["cccc3333.jpg"], photo_sized(3, 110, 300, 400))
+}
+
+#[test]
+fn a_board_subject_and_the_pinterest_source_go_together() {
+    let (engine, http) = engine_with("board", pinterest_world());
+    assert_eq!(engine.settings().unwrap().source, SourceKind::Commons);
+    assert!(engine.add_board("https://pinterest.com/pin/1/").is_err());
+    assert!(engine.add_board("https://example.com/a/b/").is_err());
+
+    let subjects = engine
+        .add_board("https://ru.pinterest.com/alice/misty-forests/?x=1")
+        .unwrap();
+    let active = subjects.active_subject().unwrap();
+    assert_eq!(active.kind(), SubjectKind::Board);
+    assert_eq!(active.label(), "Misty & quiet forests");
+    // Activating a board switched the source.
+    assert_eq!(engine.settings().unwrap().source, SourceKind::Pinterest);
+    let states: Vec<_> = engine
+        .source_statuses()
+        .unwrap()
+        .into_iter()
+        .map(|s| (s.source, s.state))
+        .collect();
+    for (k, st) in states {
+        let want = if k == SourceKind::Pinterest {
+            SourceState::Available
+        } else {
+            SourceState::Unsupported
+        };
+        assert_eq!(st, want, "{k:?}");
+    }
+    // The same board again only selects it.
+    assert_eq!(
+        engine
+            .add_board("pinterest.com/alice/misty-forests")
+            .unwrap()
+            .items
+            .len(),
+        1
+    );
+    // A stale settings object cannot switch away from Pinterest while a board is active.
+    let saved = engine
+        .save_settings(Settings {
+            source: SourceKind::Commons,
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(saved.source, SourceKind::Pinterest);
+
+    let shown = engine.change_now(SCREEN, false, NOW).unwrap();
+    assert_eq!(shown.caption, "Pinterest: Misty & quiet forests");
+    assert!(shown.credit.contains("Pinterest"), "{}", shown.credit);
+    assert!(shown.entry.candidate.id.starts_with("pinterest:"));
+    let rendered = pipeline::decode(&std::fs::read(&shown.image_path).unwrap()).unwrap();
+    assert_eq!((rendered.width(), rendered.height()), (540, 1200));
+    // The too-small pin was never rendered; scoring used the 736x preview.
+    assert!(http.requests().iter().any(|u| u.contains("/736x/")));
+    assert!(http.requests().iter().all(|u| !u.contains("wikimedia")));
+
+    // Leaving the board restores the source chosen before.
+    engine.add_query("fog").unwrap();
+    assert_eq!(engine.settings().unwrap().source, SourceKind::Commons);
+    let board_id = engine
+        .subjects()
+        .unwrap()
+        .items
+        .iter()
+        .find(|s| s.kind() == SubjectKind::Board)
+        .unwrap()
+        .id
+        .clone();
+    engine.select_subject(&board_id).unwrap();
+    assert_eq!(engine.settings().unwrap().source, SourceKind::Pinterest);
+    engine.delete_subject(&board_id).unwrap();
+    assert_eq!(engine.settings().unwrap().source, SourceKind::Commons);
+}
+
+#[test]
+fn a_failing_source_can_be_replaced_for_one_change_only() {
+    let (engine, _) = engine_with("fallback", openverse_world());
+    engine.add_query("fog").unwrap();
+    assert_eq!(engine.settings().unwrap().source, SourceKind::Commons);
+    // Commons has no fixture: every request is a 404.
+    assert!(engine.change_now(SCREEN, false, NOW).is_err());
+    // Sources that can be offered: working, no key needed, not the chosen one.
+    assert_eq!(
+        engine.fallback_sources(&[]).unwrap(),
+        [SourceKind::Openverse, SourceKind::Wallhaven]
+    );
+    assert_eq!(
+        engine.fallback_sources(&[SourceKind::Openverse]).unwrap(),
+        [SourceKind::Wallhaven]
+    );
+
+    let shown = engine
+        .change_now_with_source(SCREEN, false, NOW, Some(SourceKind::Openverse))
+        .unwrap();
+    assert_eq!(shown.entry.candidate.source, SourceKind::Openverse);
+    // The user's choice is untouched.
+    assert_eq!(engine.settings().unwrap().source, SourceKind::Commons);
+    // An override that cannot serve the subject is refused.
+    assert!(engine
+        .change_now_with_source(SCREEN, false, NOW + 1, Some(SourceKind::Pinterest))
+        .is_err());
 }

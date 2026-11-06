@@ -31,6 +31,15 @@ pub trait HttpClient: Send + Sync {
         self.get_with(url, &[], max_bytes)
     }
 
+    /// The first `len` bytes of the body (a `Range` request; a server that ignores it costs
+    /// only the bytes read). Enough to read an image's dimensions from its header.
+    fn get_prefix(&self, url: &str, len: usize) -> Result<Vec<u8>> {
+        let range = format!("bytes=0-{}", len.saturating_sub(1));
+        let mut body = self.get_with(url, &[("Range", &range)], MAX_IMAGE_BYTES)?;
+        body.truncate(len);
+        Ok(body)
+    }
+
     /// Like [`get_with`](Self::get_with) but for availability checks: a short timeout and no
     /// retry, so a dead host is reported in seconds instead of minutes.
     fn get_quick(&self, url: &str, headers: &[(&str, &str)], max_bytes: u64) -> Result<Vec<u8>> {
@@ -123,9 +132,44 @@ impl HttpClient for UreqClient {
     fn get_quick(&self, url: &str, headers: &[(&str, &str)], max_bytes: u64) -> Result<Vec<u8>> {
         self.get_once(url, headers, max_bytes, Some(QUICK_TIMEOUT))
     }
+
+    fn get_prefix(&self, url: &str, len: usize) -> Result<Vec<u8>> {
+        match self.prefix_once(url, len) {
+            Err(e) if e.is_transient() => {
+                std::thread::sleep(RETRY_DELAY);
+                self.prefix_once(url, len)
+            }
+            r => r,
+        }
+    }
 }
 
 impl UreqClient {
+    fn prefix_once(&self, url: &str, len: usize) -> Result<Vec<u8>> {
+        use std::io::Read;
+        let range = format!("bytes=0-{}", len.saturating_sub(1));
+        let mut resp = self
+            .agent
+            .get(url)
+            .header("Range", &range)
+            .call()
+            .map_err(|e| Error::Network(e.to_string()))?;
+        let status = resp.status().as_u16();
+        if !(200..300).contains(&status) {
+            return Err(Error::Status {
+                status,
+                url: url.to_owned(),
+            });
+        }
+        let mut out = Vec::with_capacity(len.min(1 << 16));
+        resp.body_mut()
+            .as_reader()
+            .take(len as u64)
+            .read_to_end(&mut out)
+            .map_err(|e| Error::Network(e.to_string()))?;
+        Ok(out)
+    }
+
     fn get_once(
         &self,
         url: &str,

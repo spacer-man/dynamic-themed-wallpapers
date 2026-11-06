@@ -3933,6 +3933,7 @@ dependencies = [
  "fastrand",
  "image",
  "percent-encoding",
+ "quick-xml",
  "rusqlite",
  "rustls-graviola",
  "serde",

@@ -1,7 +1,7 @@
 //! What the user wants pictures of. Several subjects can be saved and one is active.
 //!
 //! A subject is a [`Place`] (resolved through Wikidata), a free-text query ("foggy forest"),
-//! and — later — a Pinterest board. Which sources can serve which kind is decided by
+//! or a Pinterest board. Which sources can serve which kind is decided by
 //! [`SourceKind::supports`](crate::source::SourceKind::supports).
 
 use serde::{Deserialize, Serialize};
@@ -17,14 +17,24 @@ pub const MAX_QUERY_CHARS: usize = 80;
 pub enum SubjectKind {
     Place,
     Query,
+    Board,
 }
 
 /// Tagged by `kind` on the wire: `{"kind":"place","place":{…}}`, `{"kind":"query","text":"…"}`.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SubjectSpec {
-    Place { place: Place },
-    Query { text: String },
+    Place {
+        place: Place,
+    },
+    Query {
+        text: String,
+    },
+    /// `url` is the normalised RSS address, `name` the board's title.
+    Board {
+        url: String,
+        name: String,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -39,6 +49,7 @@ impl Subject {
         match self.spec {
             SubjectSpec::Place { .. } => SubjectKind::Place,
             SubjectSpec::Query { .. } => SubjectKind::Query,
+            SubjectSpec::Board { .. } => SubjectKind::Board,
         }
     }
 
@@ -47,6 +58,7 @@ impl Subject {
         match &self.spec {
             SubjectSpec::Place { place } => &place.label,
             SubjectSpec::Query { text } => text,
+            SubjectSpec::Board { name, .. } => name,
         }
     }
 }
@@ -99,6 +111,12 @@ impl Subjects {
         self.items.iter().find(
             |s| matches!(&s.spec, SubjectSpec::Query { text: t } if t.to_lowercase() == text.to_lowercase()),
         )
+    }
+
+    pub fn find_board(&self, url: &str) -> Option<&Subject> {
+        self.items
+            .iter()
+            .find(|s| matches!(&s.spec, SubjectSpec::Board { url: u, .. } if u == url))
     }
 
     /// Remove a subject. If it was the active one, the first remaining becomes active.

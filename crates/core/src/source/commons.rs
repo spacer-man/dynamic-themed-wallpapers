@@ -9,7 +9,7 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use super::{Candidate, CandidateRequest, Curation, License, Search, Source, SourceKind};
-use crate::error::Result;
+use crate::error::{Error, Result};
 use crate::geo::GeoPoint;
 use crate::http::{build_url, get_json, HttpClient, MAX_JSON_BYTES};
 use crate::place::{Scope, SubPlace};
@@ -242,6 +242,11 @@ impl Source for CommonsSource<'_> {
                 super::dedup(&mut out);
                 out.truncate(req.limit as usize);
                 return Ok(out);
+            }
+            Search::Board { .. } => {
+                return Err(Error::Config(
+                    "Wikimedia Commons cannot serve a Pinterest board".into(),
+                ))
             }
         };
         let mut out = Vec::new();
