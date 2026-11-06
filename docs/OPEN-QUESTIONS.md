@@ -85,3 +85,39 @@ works when called from the Rust `setup` hook before the activity is up (errors t
 next `save_settings` schedules it), and that the worker never starts a WebView (check the process log).
 
 The Unsplash key is not passed to the worker yet (see Q8), so background changes use Commons only.
+
+## Q12. Single source per user; Unsplash "on/off" became "choose a source"
+
+The old `unsplash_enabled` mixed Unsplash into Commons. The plan says the user picks the source and nothing is mixed,
+so `Settings.source` replaces it. **Applied:** old settings with `unsplash_enabled: true` migrate to `source: unsplash`
+(which shows "needs key" until a key is entered), anything else to Commons. Changing the source drops the prefetched queue.
+
+## Q13. Where API keys live
+
+Q8 left the key UI open. **Applied:** keys are entered in settings and stored in the app's private SQLite database
+(`source_keys`), so the background worker can use them. They are never in `Settings`, never sent to the UI (it only
+sees `has_key`) and never logged. This is not Android-Keystore-backed encryption. **Recommended:** keep for now; move
+to EncryptedSharedPreferences through a small Kotlin plugin if you want it.
+
+## Q14. Pixabay is mostly useless without full API access
+
+Without approval, Pixabay only gives `largeImageURL` (≤ 1280 px), too small for a phone (plan: no upscaling, drop what
+does not cover the screen). **Applied:** honest sizes, so most hits are dropped. **Recommended:** keep, and say so in the
+UI text; or apply for full access.
+
+## Q15. Wallhaven has no author or licence in search results
+
+**Applied:** caption "Wallpaper: Wallhaven #<id>", licence "No licence stated". The per-wallpaper endpoint has the
+uploader but costs one request per photo. Wallpapers there are often third-party art; General + SFW only limits that.
+**Recommended:** keep, or drop Wallhaven if unlicensed content is a concern.
+
+## Q16. Openverse licence filter and thumbnail size
+
+**Applied:** `license_type=modification` (no ND, NC allowed) and `extension=jpg` (the decoder handles only JPEG/PNG).
+Openverse thumbnails are about 600 px, below the ~1000 px preview used elsewhere. Pexels `?w=1000`, Wallhaven
+`thumbs.original` and Pixabay `largeImageURL` previews, and Pixabay full-size URLs, are from memory of the docs.
+
+## Q17. Not verified here
+
+`src-tauri` is not compiled here (gtk missing), the UI was not looked at in a browser (none installed), and no live API
+was called: all source behaviour rests on recorded-style fixtures written from the API docs as remembered.
