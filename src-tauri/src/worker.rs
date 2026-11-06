@@ -9,6 +9,7 @@ use serde::Serialize;
 use std::path::Path;
 use wallpaper_core::pipeline::Screen;
 use wallpaper_core::service::Engine;
+use wallpaper_core::source::SourceKind;
 
 /// The engine used by both the UI process and the worker. On Android `data` is the app's data
 /// directory (`Context.getDataDir()`) and `cache` is `Context.getCacheDir()`: the same
@@ -34,12 +35,40 @@ pub enum Outcome {
     /// Nothing to install (prefetch ran, or the queue was topped up).
     Done { added: u32 },
     /// Worth retrying later (network, rate limit).
-    Retry { message: String },
+    Retry {
+        message: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        fallback: Option<Fallback>,
+    },
     /// Retrying will not help until something changes (settings, empty result).
-    Failed { message: String },
+    Failed {
+        message: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        fallback: Option<Fallback>,
+    },
 }
 
-/// `op` is `"change"` (take the next wallpaper) or `"prefetch"` (top up the queue if it is low).
+/// Set when a *change* failed because of the source, so that the app can offer another one.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct Fallback {
+    /// The source that failed (`"openverse"`…) and its display name.
+    pub source: &'static str,
+    pub source_name: &'static str,
+    /// Up to three other sources that work with the active subject right now.
+    pub alternatives: Vec<Alternative>,
+    /// The user's language setting ("auto", "en" or "ru"), for the notification text.
+    pub lang: String,
+}
+
+#[derive(Debug, Serialize, PartialEq)]
+pub struct Alternative {
+    pub id: &'static str,
+    pub name: &'static str,
+}
+
+/// `op` is `"change"` (take the next wallpaper), `"change:<source id>"` (the same, but an empty
+/// queue is refilled from that source for this one change; the saved choice is not touched) or
+/// `"prefetch"` (top up the queue if it is low).
 pub fn run(
     op: &str,
     data: &Path,
@@ -48,38 +77,88 @@ pub fn run(
     height: u32,
     system_dark: bool,
 ) -> Outcome {
+    let (op, source) = match op.split_once(':') {
+        Some((op, id)) => (op, Some(id)),
+        None => (op, None),
+    };
+    let source_override = match source.map(SourceKind::from_id) {
+        Some(None) => {
+            return Outcome::Failed {
+                message: "unknown source".into(),
+                fallback: None,
+            }
+        }
+        Some(found) => found,
+        None => None,
+    };
     let engine = engine_at(data, cache);
     let screen = Screen { width, height };
     let now = Engine::now();
     match op {
-        "change" => match engine.change_now(screen, system_dark, now) {
-            Ok(shown) => Outcome::Changed {
-                path: shown.image_path.to_string_lossy().into_owned(),
-                caption: shown.caption,
-                credit: shown.credit,
-                y: shown.layout.y,
-                align: shown.layout.align,
-            },
-            Err(e) => classify(e),
-        },
+        "change" => {
+            match engine.change_now_with_source(screen, system_dark, now, source_override) {
+                Ok(shown) => Outcome::Changed {
+                    path: shown.image_path.to_string_lossy().into_owned(),
+                    caption: shown.caption,
+                    credit: shown.credit,
+                    y: shown.layout.y,
+                    align: shown.layout.align,
+                },
+                Err(e) => {
+                    let fallback = is_source_error(&e)
+                        .then(|| fallback_for(&engine, source_override))
+                        .flatten();
+                    classify(e, fallback)
+                }
+            }
+        }
         "prefetch" => match engine.prefetch_if_low(screen, system_dark, now) {
             Ok(report) => Outcome::Done {
                 added: report.map_or(0, |r| r.added),
             },
-            Err(e) => classify(e),
+            Err(e) => classify(e, None),
         },
         other => Outcome::Failed {
             message: format!("unknown operation {other:?}"),
+            fallback: None,
         },
     }
 }
 
-fn classify(e: wallpaper_core::Error) -> Outcome {
+/// The failure says something about the source (unreachable, bad answer, nothing usable), as
+/// opposed to a missing subject, a storage problem or a broken image.
+fn is_source_error(e: &wallpaper_core::Error) -> bool {
+    use wallpaper_core::Error::*;
+    matches!(e, Network(_) | Status { .. } | NotFound(_) | Parse { .. })
+}
+
+/// What to offer after `used` (the override, or the chosen source) failed.
+fn fallback_for(engine: &Engine, used: Option<SourceKind>) -> Option<Fallback> {
+    let settings = engine.settings().ok()?;
+    let used = used.unwrap_or(settings.source);
+    let alternatives = engine
+        .fallback_sources(&[used])
+        .unwrap_or_default()
+        .into_iter()
+        .map(|k| Alternative {
+            id: k.id(),
+            name: k.name(),
+        })
+        .collect();
+    Some(Fallback {
+        source: used.id(),
+        source_name: used.name(),
+        alternatives,
+        lang: settings.lang,
+    })
+}
+
+fn classify(e: wallpaper_core::Error, fallback: Option<Fallback>) -> Outcome {
     use wallpaper_core::Error::*;
     let message = e.to_string();
     match e {
-        Network(_) | Status { .. } => Outcome::Retry { message },
-        _ => Outcome::Failed { message },
+        Network(_) | Status { .. } => Outcome::Retry { message, fallback },
+        _ => Outcome::Failed { message, fallback },
     }
 }
 
@@ -125,10 +204,12 @@ mod jni_entry {
                 })
                 .unwrap_or_else(|_| Outcome::Failed {
                     message: "engine panicked".into(),
+                    fallback: None,
                 })
             }
             _ => Outcome::Failed {
                 message: "invalid arguments".into(),
+                fallback: None,
             },
         };
         let json = serde_json::to_string(&outcome).unwrap_or_else(|_| {
@@ -157,20 +238,65 @@ mod tests {
     fn network_errors_are_retried_and_others_are_not() {
         use wallpaper_core::Error;
         assert!(matches!(
-            classify(Error::Network("timeout".into())),
+            classify(Error::Network("timeout".into()), None),
             Outcome::Retry { .. }
         ));
         assert!(matches!(
-            classify(Error::Status {
-                status: 503,
-                url: "x".into()
-            }),
+            classify(
+                Error::Status {
+                    status: 503,
+                    url: "x".into()
+                },
+                None
+            ),
             Outcome::Retry { .. }
         ));
         assert!(matches!(
-            classify(Error::NotFound("nothing".into())),
+            classify(Error::NotFound("nothing".into()), None),
             Outcome::Failed { .. }
         ));
+    }
+
+    #[test]
+    fn only_source_problems_offer_another_source() {
+        use wallpaper_core::Error;
+        assert!(is_source_error(&Error::Network("x".into())));
+        assert!(is_source_error(&Error::NotFound("none".into())));
+        assert!(!is_source_error(&Error::Config("no subject".into())));
+        assert!(!is_source_error(&Error::Image("bad".into())));
+    }
+
+    #[test]
+    fn unknown_source_in_the_operation_fails_early() {
+        let dir = std::env::temp_dir().join("dtw-worker-test-unused2");
+        let out = run("change:nowhere", &dir, &dir, 1080, 2400, false);
+        assert!(matches!(out, Outcome::Failed { .. }));
+        assert!(!dir.exists());
+    }
+
+    #[test]
+    fn fallback_json_for_kotlin() {
+        let json = serde_json::to_string(&Outcome::Retry {
+            message: "timeout".into(),
+            fallback: Some(Fallback {
+                source: "commons",
+                source_name: "Wikimedia Commons",
+                alternatives: vec![Alternative {
+                    id: "openverse",
+                    name: "Openverse",
+                }],
+                lang: "auto".into(),
+            }),
+        })
+        .unwrap();
+        assert!(json.contains(r#""status":"retry""#));
+        assert!(json.contains(r#""alternatives":[{"id":"openverse","name":"Openverse"}]"#));
+        let plain = serde_json::to_string(&Outcome::Failed {
+            message: "x".into(),
+            fallback: None,
+        })
+        .unwrap();
+        assert!(!plain.contains("fallback"));
     }
 
     #[test]

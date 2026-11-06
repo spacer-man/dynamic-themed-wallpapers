@@ -31,6 +31,9 @@
 # Instantiated by WorkManager from the class name stored in its database.
 -keep class io.github.spacerman.dynamicthemedwallpapers.DailyWallpaperWorker { <init>(...); }
 
+# Notification buttons: instantiated by Android from the class name in the manifest.
+-keep class io.github.spacerman.dynamicthemedwallpapers.FallbackReceiver { <init>(...); }
+
 # Activity named in the manifest, and the Tauri/wry runtime (also covered by the generated proguard-tauri.pro).
 -keep class io.github.spacerman.dynamicthemedwallpapers.MainActivity { *; }
 -keep class app.tauri.** { *; }

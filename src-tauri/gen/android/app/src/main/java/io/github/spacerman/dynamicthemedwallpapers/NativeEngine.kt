@@ -30,11 +30,35 @@ object NativeEngine {
             val align: String,
         ) : Outcome()
         data class Done(val added: Int) : Outcome()
-        data class Retry(val message: String) : Outcome()
-        data class Failed(val message: String) : Outcome()
+        data class Retry(val message: String, val fallback: Fallback?) : Outcome()
+        data class Failed(val message: String, val fallback: Fallback?) : Outcome()
     }
 
-    /** `op` is "change" or "prefetch". Blocking: call from a background thread. */
+    /** A change failed because of the source; `alternatives` are other sources that work right now. */
+    data class Fallback(
+        val source: String,
+        val sourceName: String,
+        val alternatives: List<Alternative>,
+        val lang: String,
+    )
+
+    data class Alternative(val id: String, val name: String)
+
+    private fun parseFallback(json: JSONObject?): Fallback? {
+        if (json == null) return null
+        val list = json.optJSONArray("alternatives")
+        val alternatives = (0 until (list?.length() ?: 0)).mapNotNull { i ->
+            list?.optJSONObject(i)?.let { Alternative(it.optString("id"), it.optString("name")) }
+        }.filter { it.id.isNotEmpty() }
+        return Fallback(
+            json.optString("source"),
+            json.optString("source_name", json.optString("source")),
+            alternatives,
+            json.optString("lang", "auto"),
+        )
+    }
+
+    /** `op` is "change", "change:<source id>" (one change from that source) or "prefetch". Blocking: call from a background thread. */
     fun call(context: Context, op: String): Outcome {
         val metrics = context.resources.displayMetrics
         val dark = (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
@@ -58,8 +82,11 @@ object NativeEngine {
                 json.optString("align", "left"),
             )
             "done" -> Outcome.Done(json.optInt("added"))
-            "retry" -> Outcome.Retry(json.optString("message"))
-            else -> Outcome.Failed(json.optString("message", "unknown error"))
+            "retry" -> Outcome.Retry(json.optString("message"), parseFallback(json.optJSONObject("fallback")))
+            else -> Outcome.Failed(
+                json.optString("message", "unknown error"),
+                parseFallback(json.optJSONObject("fallback")),
+            )
         }
     }
 }

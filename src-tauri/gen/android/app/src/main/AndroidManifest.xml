@@ -2,6 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.SET_WALLPAPER" />
+    <!-- Android 13+: asked from the UI when the user sets up the schedule, never at app start. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
@@ -24,6 +26,11 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- Buttons of the "couldn't get a photo" notification. -->
+        <receiver
+            android:name=".FallbackReceiver"
+            android:exported="false" />
 
         <provider
           android:name="androidx.core.content.FileProvider"

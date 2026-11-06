@@ -11,7 +11,11 @@ import kotlinx.coroutines.withContext
  * Runs in the app process but never starts an Activity or a WebView: it calls the Rust engine over
  * JNI and installs the result with [WallpaperSetter].
  *
- * Input `op`: "change" (take the next wallpaper, install it, then top up the queue) or "prefetch".
+ * Input `op`: "change" (take the next wallpaper, install it, then top up the queue),
+ * "change:<source id>" (the same, with another source for this one change; used by the buttons of
+ * the fallback notification) or "prefetch".
+ *
+ * When a change fails because of its source (after the last retry), [FallbackNotifier] offers other sources.
  */
 class DailyWallpaperWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
@@ -25,22 +29,30 @@ class DailyWallpaperWorker(context: Context, params: WorkerParameters) : Corouti
                     Result.success()
                 }
                 is NativeEngine.Outcome.Done -> Result.success()
-                is NativeEngine.Outcome.Retry -> retryOrGiveUp(out.message)
+                is NativeEngine.Outcome.Retry -> retryOrGiveUp(out.message, out.fallback)
                 is NativeEngine.Outcome.Failed -> {
                     Log.w(TAG, "$op failed: ${out.message}")
+                    offerFallback(out.fallback)
                     Result.failure()
                 }
             }
         } catch (e: Exception) {
             Log.w(TAG, "$op crashed", e)
-            retryOrGiveUp(e.message ?: e.javaClass.simpleName)
+            retryOrGiveUp(e.message ?: e.javaClass.simpleName, null)
         }
     }
 
-    private fun retryOrGiveUp(message: String): Result {
+    private fun retryOrGiveUp(message: String, fallback: NativeEngine.Fallback?): Result {
         Log.i(TAG, "will retry: $message (attempt $runAttemptCount)")
         // WorkManager backs off exponentially; after a few tries wait for tomorrow's run instead.
-        return if (runAttemptCount < MAX_ATTEMPTS) Result.retry() else Result.failure()
+        if (runAttemptCount < MAX_ATTEMPTS) return Result.retry()
+        offerFallback(fallback)
+        return Result.failure()
+    }
+
+    /** Only the final failure of a change tells the user; `fallback` is null for other operations. */
+    private fun offerFallback(fallback: NativeEngine.Fallback?) {
+        if (fallback != null) runCatching { FallbackNotifier.show(applicationContext, fallback) }
     }
 
     companion object {
