@@ -32,7 +32,8 @@ Split of responsibilities when setting a wallpaper:
 | Module | Responsibility |
 |---|---|
 | `place` | Wikidata search (`wbsearchentities`) and entity lookup → `Place { qid, label, coords, kind, commons_category }` |
-| `source` | `Source` trait; `CommonsSource` (default, no key) and `UnsplashSource` (opt-in, user key) |
+| `source` | `Source` trait; Commons (default), Openverse, Wallhaven, Pinterest boards (no key), Unsplash, Pexels, Pixabay (user key) |
+| `subject` | what to show: Place, free-text Query, or Pinterest board; one active, one source for it |
 | `http` | tiny blocking HTTP abstraction so everything above can be tested with fixtures, no network in tests |
 | `image` | tone, sharpness, colorfulness, palette (k-means), dHash, crop plan |
 | `score` | feature vector + linear/logistic model with online SGD |
@@ -53,3 +54,5 @@ command on a worker thread. An async runtime would add binary size and complexit
 - 2026-11-05: `service::Engine` is the single entry point for everything the app does; Tauri commands (and later the JNI worker) are thin wrappers. It holds only configuration and opens a short-lived SQLite connection per call.
 - 2026-11-05: prefetched wallpapers carry their tone (store migration v2) and the tone filter is applied again when one is taken, so changing the filter or the system theme never hands out the wrong tone.
 - 2026-11-05: UI talks to the backend only via `src/lib/api.ts`; in a browser it uses `src/lib/mock.ts`. Theme colours come from `core/theme.rs` (palette → contrast-safe colours); the caption scrim is computed in the UI per photo.
+- 2026-11-06: a Pinterest board only works with the Pinterest source (and the reverse); activating a board switches the source, see OPEN-QUESTIONS Q19. Pinterest dimensions come from ranged header reads, Q20.
+- 2026-11-06: a failed background change posts a notification (Kotlin `FallbackNotifier` / `FallbackReceiver`). The worker op `change:<source id>` runs `Engine::change_now_with_source`, a one-time override that is never persisted. The worker outcome JSON carries a `fallback` object (failed source, up to three alternatives, language); see OPEN-QUESTIONS Q23.

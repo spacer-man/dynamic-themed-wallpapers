@@ -5,10 +5,11 @@ beauty beyond what humans already curated — that's the job of `image/` and `sc
 
 ## Choosing and checking sources
 
-The user picks one source in settings; sources are never mixed. A subject is a saved Place or Query (text); several
+The user picks one source in settings; sources are never mixed. A subject is a saved Place, Query (text) or Pinterest board; several
 can be saved and one is active. A place is served by Commons geographically and by every other source through its
 label as a search text. Each source reports a status: **available**, **needs key**, **unreachable** (last error and
-time) or **unsupported** (for the active subject kind; Pinterest boards will be served by Pinterest only).
+time) or **unsupported** (for the active subject kind: a Pinterest board is served by Pinterest only, and Pinterest
+serves nothing else).
 `check_source` sends one lightweight request with an 8 s timeout and no retry.
 
 For the sources below that search by words, an image is kept only if it **covers the screen without upscaling**
@@ -89,6 +90,38 @@ the wallpaper uses the smallest step that still covers the screen after cropping
   scrubbed of it.
 - `imageURL` / `fullHDURL` exist only with Pixabay full API access; otherwise the best file is `largeImageURL`
   (≤ 1280 px), which cannot cover a typical phone screen, so most hits are dropped. Likes feed the curation score.
+
+## Pinterest (public boards, no key)
+
+- **Subject:** a board address pasted by the user (`pinterest.com/<user>/<board>/`, also `ru.pinterest.com`, `pinterest.co.uk`,
+  a trailing section or query; the `.rss` address itself works). It is normalised to
+  `https://www.pinterest.com/<user>/<board>.rss`. Short `pin.it` links are **not** followed (that needs a redirect and often
+  ends on a single pin): the app asks for the full board address. Adding a board fetches the feed once to check it exists
+  (public) and to read its name.
+- **Boards and Pinterest go together.** Activating a board switches the source to Pinterest and remembers the previous one;
+  choosing a place or words restores it. Other sources are shown as unsupported while a board is active.
+- **Only the latest ~25 pins.** The RSS feed carries no more; older pins of a big board never appear. The UI says so.
+- **Images.** Items hold `<img src="https://i.pinimg.com/236x/ab/cd/ef/hash.jpg">` in the escaped description. The wallpaper
+  uses `…/originals/ab/cd/ef/hash.jpg`; if that cannot be fetched or decoded (404, WebP — the decoder handles JPEG/PNG only),
+  `/1200x/` then `/736x/`. Scoring and the in-app preview use `/736x/`. GIFs are skipped.
+- **Dimensions** are not in the feed: each image is probed with a ranged request for its first 64 KB and the header is read
+  (up to 25 small requests per refill, six at a time, memoised within one refill). An image is kept only if it **covers the
+  screen without upscaling**; everything smaller is dropped (decision with the owner), so on a phone only large pins qualify.
+- **Caption:** "Pinterest: <board name>" on the wallpaper; the credit line is "Pin by <author> on Pinterest" if the feed names
+  an author, otherwise "Pinterest". The pin links to its Pinterest page. No licence is stated (Pinterest content belongs to
+  its owners; this is for a personal wallpaper).
+- Pinterest may refuse automated requests or change the feed; a failed refresh is reported like any other source failure.
+
+## When a source fails
+
+- **In the app.** If a manual change fails because of the source (network, bad answer, nothing usable, missing key), the error
+  banner offers "Try <source>" for up to three other sources that are available for the active subject (no key missing, no
+  failure on record). The click runs one change with that source; the chosen source is not changed.
+- **In the background.** If the scheduled change fails the same way (after WorkManager's retries), the app posts the Android
+  notification "Couldn't get a photo from <source>" with one button per working alternative (up to three) and "Retry later"
+  (one more attempt in an hour). A source button queues one change with that source only (`change:<source id>` for the
+  worker, `Engine::change_now_with_source`); the override is never saved. Opening the notification opens the Sources screen.
+  Android 13+ needs the notification permission, requested when the user sets the schedule time (or from the Schedule screen).
 
 ## Keys
 
