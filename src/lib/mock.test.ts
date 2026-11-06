@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { contrast, hexToRgb } from './color';
-import { MOCK_SCENES, migrateDb, mockCall, mockTheme, resetMock, scenePalette } from './mock';
-import type { SourceStatus, Subjects, Wallpaper } from './types';
+import { MOCK_SCENES, migrateDb, mockCall, mockTheme, parseBoard, resetMock, scenePalette } from './mock';
+import type { Settings, SourceStatus, Subjects, Wallpaper } from './types';
 
 describe('mock theme keeps the contrast promises of core/theme.rs', () => {
   for (const scene of MOCK_SCENES) {
@@ -84,7 +84,16 @@ describe('mock subjects and sources', () => {
     resetMock();
     await mockCall('add_query_subject', { text: 'fog' });
     const statuses = (await mockCall('source_statuses', {})) as SourceStatus[];
-    expect(statuses.map((s) => s.source)).toEqual(['commons', 'openverse', 'wallhaven', 'unsplash', 'pexels', 'pixabay']);
+    expect(statuses.map((s) => s.source)).toEqual([
+      'commons',
+      'openverse',
+      'wallhaven',
+      'unsplash',
+      'pexels',
+      'pixabay',
+      'pinterest',
+    ]);
+    expect(statuses.find((s) => s.source === 'pinterest')!.state).toBe('unsupported');
     expect(statuses.find((s) => s.source === 'pexels')!.state).toBe('needs_key');
     expect(statuses.find((s) => s.source === 'commons')!.active).toBe(true);
 
@@ -123,4 +132,55 @@ describe('mock subjects and sources', () => {
     expect(db.subjects.items[0]).toMatchObject({ kind: 'place' });
     expect(migrateDb({ settings: { unsplash_enabled: false } }).settings.source).toBe('commons');
   });
+});
+
+describe('mock Pinterest boards and one-time source override', () => {
+  test('board addresses are parsed like the core does', () => {
+    expect(parseBoard('https://ru.pinterest.com/alice/misty-forests/?x=1')?.url).toBe(
+      'https://www.pinterest.com/alice/misty-forests.rss',
+    );
+    expect(parseBoard('pinterest.co.uk/alice/misty-forests.rss')?.board).toBe('misty-forests');
+    expect(parseBoard('https://pinterest.com/pin/123/')).toBeNull();
+    expect(parseBoard('https://example.com/a/b/')).toBeNull();
+  });
+
+  test('a board switches the source to Pinterest and leaving it switches back', async () => {
+    resetMock();
+    await mockCall('add_query_subject', { text: 'fog' });
+    await expect(mockCall('add_board_subject', { url: 'https://example.com/a/b' })).rejects.toMatchObject({
+      kind: 'config',
+    });
+    const subs = (await mockCall('add_board_subject', { url: 'pinterest.com/alice/misty-forests' })) as Subjects;
+    expect(subs.items[1]).toMatchObject({ kind: 'board', name: 'misty forests' });
+    expect(((await mockCall('get_settings', {})) as Settings).source).toBe('pinterest');
+    const st = (await mockCall('source_statuses', {})) as SourceStatus[];
+    expect(st.filter((s) => s.state === 'unsupported').length).toBe(6);
+    expect(st.find((s) => s.source === 'pinterest')).toMatchObject({ state: 'available', active: true });
+    // A stale settings object cannot undo it.
+    const s = (await mockCall('get_settings', {})) as Settings;
+    await mockCall('save_settings', { settings: { ...s, source: 'commons' } });
+    expect(((await mockCall('get_settings', {})) as Settings).source).toBe('pinterest');
+    // Back to the words: the earlier source returns.
+    await mockCall('select_subject', { id: subs.items[0]!.id });
+    expect(((await mockCall('get_settings', {})) as Settings).source).toBe('commons');
+    const w = (await mockCall('change_now', { systemDark: false })) as Wallpaper;
+    expect(w.entry.candidate.place_label).toBe('fog');
+  }, 15000);
+
+  test('a failing source can be replaced for one change without being changed', async () => {
+    resetMock();
+    await mockCall('add_query_subject', { text: 'fog' });
+    // Make Commons "unreachable" the way the demo does: a failed check on a keyed source.
+    const s = (await mockCall('get_settings', {})) as Settings;
+    await mockCall('set_source_key', { source: 'pexels', key: 'bad_key_that_is_long_enough' });
+    await mockCall('save_settings', { settings: { ...s, source: 'pexels' } });
+    await mockCall('check_source', { source: 'pexels' });
+    await expect(mockCall('change_now', { systemDark: false })).rejects.toMatchObject({ kind: 'network' });
+    const w = (await mockCall('change_now', { systemDark: false, source: 'openverse' })) as Wallpaper;
+    expect(w.entry.candidate.source).toBe('pexels'); // the mock labels photos with the chosen source
+    expect(((await mockCall('get_settings', {})) as Settings).source).toBe('pexels');
+    await expect(mockCall('change_now', { systemDark: false, source: 'pinterest' })).rejects.toMatchObject({
+      kind: 'config',
+    });
+  }, 15000);
 });

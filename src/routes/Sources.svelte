@@ -43,6 +43,9 @@
   </div>
   <h1>{t('sources.title')}</h1>
   <p class="hint">{t('sources.intro')}</p>
+  {#if app.activeSubject?.kind === 'board'}
+    <p class="hint">{t('sources.locked.board')}</p>
+  {/if}
 
   {#each SOURCES as info (info.id)}
     {@const st = status(info.id)}

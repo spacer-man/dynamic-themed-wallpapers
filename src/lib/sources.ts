@@ -16,6 +16,7 @@ export const SOURCES: SourceInfo[] = [
   { id: 'unsplash', name: 'Unsplash', keyHost: 'unsplash.com/developers' },
   { id: 'pexels', name: 'Pexels', keyHost: 'pexels.com/api' },
   { id: 'pixabay', name: 'Pixabay', keyHost: 'pixabay.com/api/docs' },
+  { id: 'pinterest', name: 'Pinterest', keyHost: null },
 ];
 
 export function sourceName(id: SourceId): string {
