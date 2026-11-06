@@ -103,6 +103,28 @@ class App {
     }
   }
 
+  /** Set a photo from the history as the wallpaper again. Returns whether it worked. */
+  async applyFromHistory(historyId: number): Promise<boolean> {
+    if (this.busy) return false;
+    this.busy = true;
+    this.error = null;
+    try {
+      const w = await api.applyFromHistory(historyId, this.systemDark);
+      if (w) {
+        this.wallpaper = w;
+        this.theme = w.theme;
+        if (w.theme.dark !== this.dark) await this.retheme();
+        await this.loadHistory();
+      }
+      return true;
+    } catch (e) {
+      this.fail(e);
+      return false;
+    } finally {
+      this.busy = false;
+    }
+  }
+
   async like() {
     await this.rate(true);
   }

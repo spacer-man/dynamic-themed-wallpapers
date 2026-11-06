@@ -27,6 +27,8 @@ export const en: Dict = {
   'details.source': 'Source page',
   'details.place': 'Place',
   'details.close': 'Close',
+  'details.apply': 'Set as wallpaper',
+  'details.applying': 'Setting…',
 
   'place.title': 'Place',
   'place.search': 'Search: Japan, Kyoto, Mount Fuji, Shibuya…',
@@ -121,6 +123,8 @@ export const ru: Dict = {
   'details.source': 'Страница источника',
   'details.place': 'Место',
   'details.close': 'Закрыть',
+  'details.apply': 'Поставить на обои',
+  'details.applying': 'Ставим…',
 
   'place.title': 'Место',
   'place.search': 'Поиск: Япония, Киото, гора Фудзи, Сибуя…',

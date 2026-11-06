@@ -141,6 +141,15 @@ impl<'a> ImageCache<'a> {
         Ok(file.map(|f| self.dir.join(f)).filter(|p| p.exists()))
     }
 
+    /// Mark a cached file as used (it is the wallpaper now), so eviction never takes it first.
+    pub fn mark_used(&self, candidate_id: &str, now: i64) -> Result<()> {
+        self.store.conn.execute(
+            "UPDATE cache SET status = 'used', last_used_at = ?2 WHERE candidate_id = ?1",
+            params![candidate_id, now],
+        )?;
+        Ok(())
+    }
+
     /// Delete the prefetched-but-unshown wallpapers (e.g. after the place changed).
     pub fn drop_ready(&self) -> Result<()> {
         let files: Vec<String> = {

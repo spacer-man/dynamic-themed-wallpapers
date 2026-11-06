@@ -36,7 +36,13 @@
 </section>
 
 {#if selected}
-  <PhotoDetails entry={selected} onclose={() => (selected = null)} />
+  <PhotoDetails
+    entry={selected}
+    onclose={() => (selected = null)}
+    onapply={async () => {
+      if (await app.applyFromHistory(selected!.id)) selected = null;
+    }}
+  />
 {/if}
 
 <style>

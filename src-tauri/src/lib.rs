@@ -192,6 +192,25 @@ async fn reapply_wallpaper(
     .await
 }
 
+/// Set a photo from the history as the wallpaper again (cached render, or re-downloaded).
+#[tauri::command]
+async fn apply_from_history(
+    app: tauri::AppHandle,
+    engine: tauri::State<'_, Engine>,
+    history_id: i64,
+    system_dark: bool,
+    screen: ScreenDto,
+) -> CmdResult<Option<WallpaperDto>> {
+    let e = engine.inner().clone();
+    blocking(move || {
+        let shown = e.apply_from_history(history_id, screen.to_screen(), Engine::now())?;
+        app.state::<wallpaper_bridge::Bridge>()
+            .set_wallpaper(&shown)?;
+        e.current_wallpaper(system_dark)?.map(to_dto).transpose()
+    })
+    .await
+}
+
 #[tauri::command]
 async fn feedback(
     engine: tauri::State<'_, Engine>,
@@ -261,6 +280,7 @@ pub fn run() {
             current_wallpaper,
             change_now,
             reapply_wallpaper,
+            apply_from_history,
             feedback,
             history,
             cache_info,
