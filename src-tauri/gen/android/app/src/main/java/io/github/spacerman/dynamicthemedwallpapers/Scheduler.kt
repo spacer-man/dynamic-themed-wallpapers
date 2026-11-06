@@ -4,7 +4,9 @@ import android.content.Context
 import androidx.work.Constraints
 import androidx.work.Data
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import java.util.Calendar
@@ -19,6 +21,7 @@ import java.util.concurrent.TimeUnit
 object Scheduler {
     private const val DAILY = "daily-wallpaper"
     private const val PREFETCH = "prefetch-wallpaper"
+    private const val ONE_TIME = "one-time-change"
 
     fun schedule(context: Context, time: String, wifiOnly: Boolean) {
         val wm = WorkManager.getInstance(context)
@@ -44,6 +47,19 @@ object Scheduler {
             .setInputData(Data.Builder().putString(DailyWallpaperWorker.KEY_OP, "prefetch").build())
             .build()
         wm.enqueueUniquePeriodicWork(PREFETCH, ExistingPeriodicWorkPolicy.UPDATE, prefetch)
+    }
+
+    /**
+     * One change now (or after `delayMinutes`): `op` is "change", or "change:<source id>" to use
+     * another source for this change only. A newer request replaces a pending one.
+     */
+    fun changeOnce(context: Context, op: String, delayMinutes: Long) {
+        val request = OneTimeWorkRequestBuilder<DailyWallpaperWorker>()
+            .setInitialDelay(delayMinutes, TimeUnit.MINUTES)
+            .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+            .setInputData(Data.Builder().putString(DailyWallpaperWorker.KEY_OP, op).build())
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(ONE_TIME, ExistingWorkPolicy.REPLACE, request)
     }
 
     fun cancel(context: Context) {

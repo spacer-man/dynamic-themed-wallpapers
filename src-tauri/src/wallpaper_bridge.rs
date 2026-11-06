@@ -68,6 +68,67 @@ impl Bridge {
     pub fn schedule(&self, _time: &str, _wifi_only: bool) -> Result<(), Error> {
         Ok(())
     }
+
+    /// The screen a notification asked the app to open (`"sources"`), once; `None` otherwise.
+    #[cfg(target_os = "android")]
+    pub fn launch_route(&self) -> Result<Option<String>, Error> {
+        self.0
+            .run_mobile_plugin::<RouteReply>("launchRoute", NoArgs {})
+            .map(|r| r.route)
+            .map_err(|e| Error::Config(format!("reading the launch screen failed: {e}")))
+    }
+
+    #[cfg(not(target_os = "android"))]
+    pub fn launch_route(&self) -> Result<Option<String>, Error> {
+        Ok(None)
+    }
+
+    /// Whether notifications can be shown. Without them the fallback notification of a failed
+    /// background change is silently skipped.
+    #[cfg(target_os = "android")]
+    pub fn notifications_enabled(&self) -> Result<bool, Error> {
+        self.0
+            .run_mobile_plugin::<EnabledReply>("notificationsEnabled", NoArgs {})
+            .map(|r| r.enabled)
+            .map_err(|e| Error::Config(format!("reading the notification state failed: {e}")))
+    }
+
+    #[cfg(not(target_os = "android"))]
+    pub fn notifications_enabled(&self) -> Result<bool, Error> {
+        Ok(true)
+    }
+
+    /// Ask for the notification permission (Android 13+ shows a system dialog; older versions
+    /// and desktop do nothing). Returns the state *before* the user answers.
+    #[cfg(target_os = "android")]
+    pub fn request_notifications(&self) -> Result<bool, Error> {
+        self.0
+            .run_mobile_plugin::<EnabledReply>("requestNotifications", NoArgs {})
+            .map(|r| r.enabled)
+            .map_err(|e| Error::Config(format!("asking for notifications failed: {e}")))
+    }
+
+    #[cfg(not(target_os = "android"))]
+    pub fn request_notifications(&self) -> Result<bool, Error> {
+        Ok(true)
+    }
+}
+
+#[cfg(target_os = "android")]
+#[derive(serde::Serialize)]
+struct NoArgs {}
+
+#[cfg(target_os = "android")]
+#[derive(serde::Deserialize)]
+struct RouteReply {
+    #[serde(default)]
+    route: Option<String>,
+}
+
+#[cfg(target_os = "android")]
+#[derive(serde::Deserialize)]
+struct EnabledReply {
+    enabled: bool,
 }
 
 #[cfg(target_os = "android")]

@@ -161,6 +161,13 @@ async fn add_query_subject(engine: tauri::State<'_, Engine>, text: String) -> Cm
     blocking(move || e.add_query(&text)).await
 }
 
+/// Save a Pinterest board from the address the user pasted; selects Pinterest as the source.
+#[tauri::command]
+async fn add_board_subject(engine: tauri::State<'_, Engine>, url: String) -> CmdResult<Subjects> {
+    let e = engine.inner().clone();
+    blocking(move || e.add_board(&url)).await
+}
+
 #[tauri::command]
 async fn update_query_subject(
     engine: tauri::State<'_, Engine>,
@@ -226,10 +233,13 @@ async fn change_now(
     engine: tauri::State<'_, Engine>,
     system_dark: bool,
     screen: ScreenDto,
+    source: Option<SourceKind>,
 ) -> CmdResult<Option<WallpaperDto>> {
     let e = engine.inner().clone();
     blocking(move || {
-        let shown = e.change_now(screen.to_screen(), system_dark, Engine::now())?;
+        // `source` is a one-time fallback chosen by the user after a failure; it is not saved.
+        let shown =
+            e.change_now_with_source(screen.to_screen(), system_dark, Engine::now(), source)?;
         app.state::<wallpaper_bridge::Bridge>()
             .set_wallpaper(&shown)?;
         e.current_wallpaper(system_dark)?.map(to_dto).transpose()
@@ -312,6 +322,31 @@ async fn forget_all(engine: tauri::State<'_, Engine>) -> CmdResult<()> {
     blocking(move || e.forget_all()).await
 }
 
+/// The screen a notification asked for (`"sources"`), consumed on read.
+#[tauri::command]
+async fn launch_route(app: tauri::AppHandle) -> CmdResult<Option<String>> {
+    blocking(move || app.state::<wallpaper_bridge::Bridge>().launch_route()).await
+}
+
+#[tauri::command]
+async fn notifications_enabled(app: tauri::AppHandle) -> CmdResult<bool> {
+    blocking(move || {
+        app.state::<wallpaper_bridge::Bridge>()
+            .notifications_enabled()
+    })
+    .await
+}
+
+/// Called when the user turns the schedule on, never at app start.
+#[tauri::command]
+async fn request_notifications(app: tauri::AppHandle) -> CmdResult<bool> {
+    blocking(move || {
+        app.state::<wallpaper_bridge::Bridge>()
+            .request_notifications()
+    })
+    .await
+}
+
 #[tauri::command]
 fn theme_for(engine: tauri::State<'_, Engine>, palette: Vec<Swatch>, dark: bool) -> Theme {
     engine.theme_for(&palette, dark)
@@ -342,6 +377,7 @@ pub fn run() {
             select_place,
             subjects,
             add_query_subject,
+            add_board_subject,
             update_query_subject,
             select_subject,
             delete_subject,
@@ -357,6 +393,9 @@ pub fn run() {
             cache_info,
             clear_cache,
             forget_all,
+            launch_route,
+            notifications_enabled,
+            request_notifications,
             theme_for,
         ])
         .run(tauri::generate_context!())
