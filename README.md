@@ -25,6 +25,9 @@ with a small caption saying what the place is.
 ## What it does
 
 - **Any place**: a country, a city, a district, a mountain, a temple — found via Wikidata.
+- **Places or words**: save several subjects — a place, or free text like "foggy forest" — and switch between them.
+- **Your choice of source**: Wikimedia Commons (default), Openverse, Wallhaven (no key) or Unsplash, Pexels, Pixabay
+  (your own free key). Settings show whether each one is reachable. See [docs/sources.md](docs/sources.md).
 - **Tone-aware**: ask for dark photos only (or light, or follow the system theme) and you will never get the other kind.
 - **Picks beautiful photos, not random ones**: curated sets first (Wikimedia Commons Featured / Quality / Valued images),
   then technical filters (sharpness, clipping, resolution, crop loss), then a small on-device model that learns from
@@ -45,8 +48,9 @@ The release notes list the SHA-256 checksum.
 
 **No telemetry. No analytics. No accounts. No crash reporters.**
 
-The app only talks to `commons.wikimedia.org`, `www.wikidata.org`, `query.wikidata.org` and — only if you turn it on and
-supply your own key — `api.unsplash.com`. Everything it learns about your taste stays on the device.
+The app only talks to `commons.wikimedia.org`, `www.wikidata.org`, `query.wikidata.org` and — only for the source you choose
+(and, for Unsplash, Pexels and Pixabay, your own key) — `api.openverse.org`, `wallhaven.cc`, `api.unsplash.com`,
+`api.pexels.com` or `pixabay.com`, plus the image hosts they name. Everything it learns about your taste stays on the device.
 See [docs/privacy.md](docs/privacy.md).
 
 ## Attribution

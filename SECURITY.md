@@ -12,7 +12,7 @@ You can expect an acknowledgement within a week.
 
 Things we especially care about:
 
-- any data leaving the device other than the documented requests to Wikimedia / Wikidata / (opt-in) Unsplash;
-- the Unsplash API key being readable by other apps or ending up in logs or backups;
+- any data leaving the device other than the documented requests (see docs/privacy.md);
+- any source API key (Unsplash, Pexels, Pixabay) being readable by other apps or ending up in logs or backups;
 - untrusted text from photo metadata (titles, descriptions, author names) being interpreted as markup or code
   anywhere in the UI.
