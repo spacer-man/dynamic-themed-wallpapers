@@ -30,7 +30,16 @@ pub trait HttpClient: Send + Sync {
     fn get(&self, url: &str, max_bytes: u64) -> Result<Vec<u8>> {
         self.get_with(url, &[], max_bytes)
     }
+
+    /// Like [`get_with`](Self::get_with) but for availability checks: a short timeout and no
+    /// retry, so a dead host is reported in seconds instead of minutes.
+    fn get_quick(&self, url: &str, headers: &[(&str, &str)], max_bytes: u64) -> Result<Vec<u8>> {
+        self.get_with(url, headers, max_bytes)
+    }
 }
+
+/// Timeout of [`HttpClient::get_quick`].
+pub const QUICK_TIMEOUT: Duration = Duration::from_secs(8);
 
 pub fn get_json<T: DeserializeOwned>(
     http: &dyn HttpClient,
@@ -102,19 +111,32 @@ const RETRY_DELAY: Duration = Duration::from_millis(1500);
 
 impl HttpClient for UreqClient {
     fn get_with(&self, url: &str, headers: &[(&str, &str)], max_bytes: u64) -> Result<Vec<u8>> {
-        match self.get_once(url, headers, max_bytes) {
+        match self.get_once(url, headers, max_bytes, None) {
             Err(e) if e.is_transient() => {
                 std::thread::sleep(RETRY_DELAY);
-                self.get_once(url, headers, max_bytes)
+                self.get_once(url, headers, max_bytes, None)
             }
             r => r,
         }
     }
+
+    fn get_quick(&self, url: &str, headers: &[(&str, &str)], max_bytes: u64) -> Result<Vec<u8>> {
+        self.get_once(url, headers, max_bytes, Some(QUICK_TIMEOUT))
+    }
 }
 
 impl UreqClient {
-    fn get_once(&self, url: &str, headers: &[(&str, &str)], max_bytes: u64) -> Result<Vec<u8>> {
+    fn get_once(
+        &self,
+        url: &str,
+        headers: &[(&str, &str)],
+        max_bytes: u64,
+        timeout: Option<Duration>,
+    ) -> Result<Vec<u8>> {
         let mut req = self.agent.get(url);
+        if let Some(t) = timeout {
+            req = req.config().timeout_global(Some(t)).build();
+        }
         for (k, v) in headers {
             req = req.header(*k, *v);
         }

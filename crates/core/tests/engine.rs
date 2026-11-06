@@ -7,7 +7,9 @@ use image::{codecs::jpeg::JpegEncoder, DynamicImage, Rgb, RgbImage};
 use wallpaper_core::http::fixture::FixtureHttp;
 use wallpaper_core::pipeline::{self, Screen};
 use wallpaper_core::score::ToneFilter;
-use wallpaper_core::service::{CaptionAlign, Engine, Settings, DEFAULT_CAPTION_Y};
+use wallpaper_core::service::{CaptionAlign, Engine, Settings, SourceState, DEFAULT_CAPTION_Y};
+use wallpaper_core::source::SourceKind;
+use wallpaper_core::{GeoPoint, Place, PlaceKind, SubjectKind};
 
 const SCREEN: Screen = Screen {
     width: 540,
@@ -418,4 +420,249 @@ fn setting_a_history_photo_offline_fails_cleanly_when_the_file_is_gone() {
         .apply_from_history(first.entry.id, SCREEN, NOW + 1)
         .is_err());
     assert_eq!(offline.history(10, 0).unwrap().len(), 1, "nothing recorded");
+}
+
+fn engine_with(name: &str, http: FixtureHttp) -> (Engine, Arc<FixtureHttp>) {
+    let http = Arc::new(http);
+    let dir = scratch(name);
+    let engine = Engine::with_http(dir.join("app.db"), dir.join("cache"), http.clone());
+    (engine, http)
+}
+
+fn openverse_world() -> FixtureHttp {
+    FixtureHttp::new()
+        .route(
+            &["api.openverse.org", "q=fog"],
+            fixture("openverse/search_fog.json"),
+        )
+        .route(&["111111111111"], photo(1, 90))
+        .route(&["111_o.jpg"], photo(1, 90))
+        .route(&["222222222222"], photo(2, 100))
+        .route(&["Mist.jpg"], photo(2, 100))
+}
+
+#[test]
+fn old_installs_migrate_place_and_unsplash_choice() {
+    let (engine, _) = engine_with("migrate", FixtureHttp::new());
+    let place = Place {
+        qid: "Q34600".into(),
+        label: "Киото".into(),
+        description: None,
+        coords: Some(GeoPoint::new(35.0, 135.7)),
+        kind: PlaceKind::City,
+        area_km2: None,
+        commons_category: None,
+    };
+    {
+        // What the previous version left in the database.
+        let store = engine.store().unwrap();
+        store.set_json("place", &place).unwrap();
+        store
+            .set_json(
+                "settings",
+                &serde_json::json!({"tone":"dark","unsplash_enabled":true,"cache_mb":300}),
+            )
+            .unwrap();
+    }
+    let settings = engine.settings().unwrap();
+    assert_eq!(settings.source, SourceKind::Unsplash);
+    assert_eq!(settings.tone, ToneFilter::Dark);
+    assert_eq!(settings.cache_mb, 300);
+    let subjects = engine.subjects().unwrap();
+    assert_eq!(subjects.items.len(), 1);
+    assert_eq!(
+        subjects.active.as_deref(),
+        Some(subjects.items[0].id.as_str())
+    );
+    assert_eq!(engine.selected_place().unwrap().unwrap(), place);
+    // Saving writes the new format; the legacy field is gone for good.
+    let saved = engine.save_settings(settings).unwrap();
+    assert_eq!(saved.source, SourceKind::Unsplash);
+    let raw: serde_json::Value = engine
+        .store()
+        .unwrap()
+        .get_json("settings")
+        .unwrap()
+        .unwrap();
+    assert!(raw.get("unsplash_enabled").is_none());
+
+    // "Unsplash off" simply means the default, Commons.
+    let (engine, _) = engine_with("migrate-off", FixtureHttp::new());
+    engine
+        .store()
+        .unwrap()
+        .set_json("settings", &serde_json::json!({"unsplash_enabled":false}))
+        .unwrap();
+    assert_eq!(engine.settings().unwrap().source, SourceKind::Commons);
+}
+
+#[test]
+fn subjects_can_be_saved_switched_edited_and_deleted() {
+    let (engine, _) = engine("subjects");
+    assert!(engine.subjects().unwrap().items.is_empty());
+    engine.select_place("Q34600", "en").unwrap();
+    engine.prefetch(SCREEN, false, 2, NOW).unwrap();
+    assert_eq!(engine.cache_info().unwrap().ready, 2);
+
+    // A query joins the saved place; the queue made for the place is dropped.
+    let subjects = engine.add_query("  foggy   forest ").unwrap();
+    assert_eq!(subjects.items.len(), 2);
+    let query_id = subjects.active.clone().unwrap();
+    assert_eq!(subjects.get(&query_id).unwrap().kind(), SubjectKind::Query);
+    assert_eq!(subjects.get(&query_id).unwrap().label(), "foggy forest");
+    assert_eq!(engine.cache_info().unwrap().ready, 0);
+    assert!(
+        engine.selected_place().unwrap().is_none(),
+        "active is a query"
+    );
+    assert!(engine.add_query("x").is_err());
+    // The same text again only selects it.
+    assert_eq!(engine.add_query("Foggy forest").unwrap().items.len(), 2);
+
+    // Switch back, edit, delete.
+    let place_id = subjects
+        .items
+        .iter()
+        .find(|s| s.kind() == SubjectKind::Place)
+        .unwrap()
+        .id
+        .clone();
+    engine.select_subject(&place_id).unwrap();
+    assert!(engine.selected_place().unwrap().is_some());
+    assert!(engine.select_subject("nope").is_err());
+    let edited = engine.update_query(&query_id, "misty lake").unwrap();
+    assert_eq!(edited.get(&query_id).unwrap().label(), "misty lake");
+    assert!(
+        engine.update_query(&place_id, "no").is_err(),
+        "places are not editable text"
+    );
+    let left = engine.delete_subject(&place_id).unwrap();
+    assert_eq!(left.items.len(), 1);
+    assert_eq!(
+        left.active.as_deref(),
+        Some(query_id.as_str()),
+        "falls back to the other"
+    );
+    let none = engine.delete_subject(&query_id).unwrap();
+    assert!(none.items.is_empty() && none.active.is_none());
+    assert!(engine.change_now(SCREEN, false, NOW).is_err());
+}
+
+#[test]
+fn query_mode_works_end_to_end_with_another_source() {
+    let (engine, http) = engine_with("openverse", openverse_world());
+    engine
+        .save_settings(Settings {
+            source: SourceKind::Openverse,
+            ..Default::default()
+        })
+        .unwrap();
+    engine.add_query("fog").unwrap();
+    let shown = engine.change_now(SCREEN, false, NOW).unwrap();
+    assert!(shown.caption.starts_with("fog"), "{}", shown.caption);
+    assert!(
+        shown.credit.starts_with("Photo: ") && shown.credit.contains("CC"),
+        "{}",
+        shown.credit
+    );
+    let rendered = pipeline::decode(&std::fs::read(&shown.image_path).unwrap()).unwrap();
+    assert_eq!((rendered.width(), rendered.height()), (540, 1200));
+    // Only the chosen source was contacted.
+    for url in http.requests() {
+        assert!(!url.contains("wikimedia.org/w/api.php"), "{url}");
+    }
+    let st = engine
+        .source_statuses()
+        .unwrap()
+        .into_iter()
+        .find(|s| s.source == SourceKind::Openverse)
+        .unwrap();
+    assert_eq!(st.state, SourceState::Available);
+    assert!(st.active && st.checked_at == Some(NOW) && st.error.is_none());
+}
+
+#[test]
+fn key_sources_need_a_key_and_failures_show_as_unreachable() {
+    let key = "563492ad6f91700001000001abcdefabcdefabcdefabcdefabcdef12";
+    let http = FixtureHttp::new().route(&["api.pexels.com"], fixture("pexels/search_fog.json"));
+    let (engine, http) = engine_with("pexels", http);
+    engine
+        .save_settings(Settings {
+            source: SourceKind::Pexels,
+            ..Default::default()
+        })
+        .unwrap();
+    engine.add_query("fog").unwrap();
+
+    let status = |engine: &Engine, k: SourceKind| {
+        engine
+            .source_statuses()
+            .unwrap()
+            .into_iter()
+            .find(|s| s.source == k)
+            .unwrap()
+    };
+    assert_eq!(
+        status(&engine, SourceKind::Pexels).state,
+        SourceState::NeedsKey
+    );
+    assert!(engine.prefetch(SCREEN, false, 1, NOW).is_err());
+    // No key: no request is sent by a check either.
+    assert_eq!(
+        engine.check_source(SourceKind::Pexels, NOW).unwrap().state,
+        SourceState::NeedsKey
+    );
+    assert!(http.requests().is_empty());
+
+    assert!(engine
+        .set_source_key(SourceKind::Pexels, Some("short".into()))
+        .is_err());
+    assert!(engine
+        .set_source_key(SourceKind::Commons, Some(key.into()))
+        .is_err());
+    engine
+        .set_source_key(SourceKind::Pexels, Some(format!(" {key} ")))
+        .unwrap();
+    assert!(status(&engine, SourceKind::Pexels).has_key);
+    // The key is not part of the settings the UI gets.
+    let json = serde_json::to_string(&engine.settings().unwrap()).unwrap();
+    assert!(!json.contains(key));
+    let st = engine.check_source(SourceKind::Pexels, NOW + 5).unwrap();
+    assert_eq!(st.state, SourceState::Available);
+    assert_eq!(st.checked_at, Some(NOW + 5));
+    assert!(http
+        .headers(0)
+        .contains(&("Authorization".into(), key.into())));
+
+    // Wallhaven has no fixture here → 404 → unreachable, with the error and the time.
+    let st = engine.check_source(SourceKind::Wallhaven, NOW + 9).unwrap();
+    assert_eq!(st.state, SourceState::Unreachable);
+    assert!(st.error.unwrap().contains("404"));
+    assert_eq!(st.checked_at, Some(NOW + 9));
+    assert_eq!(
+        status(&engine, SourceKind::Wallhaven).state,
+        SourceState::Unreachable
+    );
+
+    // Removing the key brings the "needs key" state back.
+    engine.set_source_key(SourceKind::Pexels, None).unwrap();
+    assert_eq!(
+        status(&engine, SourceKind::Pexels).state,
+        SourceState::NeedsKey
+    );
+}
+
+#[test]
+fn changing_the_source_drops_the_queue() {
+    let (engine, _) = engine("source-queue");
+    engine.select_place("Q34600", "en").unwrap();
+    engine.prefetch(SCREEN, false, 2, NOW).unwrap();
+    assert_eq!(engine.cache_info().unwrap().ready, 2);
+    engine
+        .save_settings(Settings {
+            source: SourceKind::Wallhaven,
+            ..Default::default()
+        })
+        .unwrap();
+    assert_eq!(engine.cache_info().unwrap().ready, 0);
 }

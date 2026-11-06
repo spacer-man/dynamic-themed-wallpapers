@@ -8,11 +8,11 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 use serde_json::Value;
 
-use super::{Candidate, CandidateRequest, Curation, License, Source, SourceKind};
+use super::{Candidate, CandidateRequest, Curation, License, Search, Source, SourceKind};
 use crate::error::Result;
 use crate::geo::GeoPoint;
-use crate::http::{build_url, get_json, HttpClient};
-use crate::place::{Place, Scope, SubPlace};
+use crate::http::{build_url, get_json, HttpClient, MAX_JSON_BYTES};
+use crate::place::{Scope, SubPlace};
 use crate::text::{html_to_text, truncate};
 
 const API: &str = "https://commons.wikimedia.org/w/api.php";
@@ -76,21 +76,33 @@ impl<'a> CommonsSource<'a> {
 
     /// Run one search query and turn its pages into candidates.
     ///
-    /// `page` selects which slice of the results to take (0 = best). Geographic queries get
-    /// variety from paging; category queries use random order.
-    fn search(&self, query: &str, place_label: &str, page: u32) -> Result<Vec<Candidate>> {
-        let results = self.search_page(query, place_label, page)?;
+    /// `page` selects which slice of the results to take (0 = best). Geographic and text
+    /// queries (`paged`) get variety from paging; category queries use random order.
+    fn search(
+        &self,
+        query: &str,
+        place_label: &str,
+        page: u32,
+        paged: bool,
+    ) -> Result<Vec<Candidate>> {
+        let results = self.search_page(query, place_label, page, paged)?;
         if results.is_empty() && page > 0 {
             // Paged past the end of a small result set.
-            return self.search_page(query, place_label, 0);
+            return self.search_page(query, place_label, 0, paged);
         }
         Ok(results)
     }
 
-    fn search_page(&self, query: &str, place_label: &str, page: u32) -> Result<Vec<Candidate>> {
+    fn search_page(
+        &self,
+        query: &str,
+        place_label: &str,
+        page: u32,
+        paged: bool,
+    ) -> Result<Vec<Candidate>> {
         let limit = PAGE_SIZE.to_string();
         let offset = (page * PAGE_SIZE).to_string();
-        let geo = query.contains("nearcoord:");
+        let geo = paged;
         let mut params = vec![
             ("action", "query"),
             ("format", "json"),
@@ -183,6 +195,23 @@ pub fn radius_query(center: GeoPoint, km: f64, req: &CandidateRequest) -> String
     )
 }
 
+/// Free-text search restricted to the same curated categories. The text is reduced to plain
+/// words so it cannot smuggle in CirrusSearch operators (`incategory:`, quotes, `|`).
+pub fn text_query(text: &str, req: &CandidateRequest) -> String {
+    let words: String = text
+        .chars()
+        .map(|c| {
+            if c.is_alphanumeric() || c == '\'' || c == '-' {
+                c
+            } else {
+                ' '
+            }
+        })
+        .collect();
+    let words = words.split_whitespace().collect::<Vec<_>>().join(" ");
+    format!("{words} {} {}", curated_filter(), base_filters(req))
+}
+
 pub fn category_query(category: &str, req: &CandidateRequest) -> String {
     let c = category.replace(' ', "_").replace('"', "");
     format!(
@@ -205,12 +234,16 @@ impl Source for CommonsSource<'_> {
         SourceKind::Commons
     }
 
-    fn candidates(
-        &self,
-        place: &Place,
-        scope: &Scope,
-        req: &CandidateRequest,
-    ) -> Result<Vec<Candidate>> {
+    fn candidates(&self, search: &Search<'_>, req: &CandidateRequest) -> Result<Vec<Candidate>> {
+        let (place, scope) = match search {
+            Search::Place { place, scope } => (*place, *scope),
+            Search::Query(text) => {
+                let mut out = self.search(&text_query(text, req), text, req.page(), true)?;
+                super::dedup(&mut out);
+                out.truncate(req.limit as usize);
+                return Ok(out);
+            }
+        };
         let mut out = Vec::new();
         match scope {
             Scope::Radius { center, km } => {
@@ -218,6 +251,7 @@ impl Source for CommonsSource<'_> {
                     &radius_query(*center, *km, req),
                     &place.label,
                     req.page(),
+                    true,
                 )?);
             }
             Scope::Hierarchy => {
@@ -227,13 +261,13 @@ impl Source for CommonsSource<'_> {
                     let q = radius_query(sub.coords, SUB_PLACE_RADIUS_KM, req);
                     let label = format!("{}, {}", sub.label, place.label);
                     // One flaky sub-place shouldn't sink the whole refill.
-                    match self.search(&q, &label, req.page()) {
+                    match self.search(&q, &label, req.page(), true) {
                         Ok(c) => groups.push(c),
                         Err(e) => last_err = Some(e),
                     }
                 }
                 if let Some(cat) = &place.commons_category {
-                    match self.search(&category_query(cat, req), &place.label, 0) {
+                    match self.search(&category_query(cat, req), &place.label, 0, false) {
                         Ok(c) => groups.push(c),
                         Err(e) => last_err = Some(e),
                     }
@@ -250,6 +284,19 @@ impl Source for CommonsSource<'_> {
         super::dedup(&mut out);
         out.truncate(req.limit as usize);
         Ok(out)
+    }
+
+    fn check(&self) -> Result<()> {
+        let url = build_url(
+            API,
+            &[
+                ("action", "query"),
+                ("format", "json"),
+                ("meta", "siteinfo"),
+                ("siprop", "general"),
+            ],
+        );
+        self.http.get_quick(&url, &[], MAX_JSON_BYTES).map(|_| ())
     }
 
     fn sized_url(&self, c: &Candidate, min_width: u32, min_height: u32) -> String {
