@@ -143,7 +143,7 @@ export interface ScreenSize {
   height: number;
 }
 
-export type ErrorKind = 'network' | 'not_found' | 'config' | 'parse' | 'image' | 'storage' | 'internal';
+export type ErrorKind = 'network' | 'refused' | 'not_found' | 'config' | 'parse' | 'image' | 'storage' | 'internal';
 
 export class AppError extends Error {
   constructor(
