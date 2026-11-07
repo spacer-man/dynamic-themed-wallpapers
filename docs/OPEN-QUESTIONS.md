@@ -122,12 +122,11 @@ Openverse thumbnails are about 600 px, below the ~1000 px preview used elsewhere
 `src-tauri` is not compiled here (gtk missing), the UI was not looked at in a browser (none installed), and no live API
 was called: all source behaviour rests on recorded-style fixtures written from the API docs as remembered.
 
-## Q18. `pin.it` short links are not resolved
+## Q18. `pin.it` short links
 
-The task said "if cheap". Following a short link needs the final URL after a redirect, which the `HttpClient` trait does not
-expose, and a `pin.it` link usually points at a single pin, not a board. **Applied:** only full board addresses are accepted
-(`pinterest.com`, country domains and subdomains, `.co.uk`/`.com.au` style); a `pin.it` link gets a message asking for the
-board address. **Recommended:** keep.
+**Resolved with the owner:** the Share button of the Pinterest app only gives `pin.it` links, so they are followed now
+(`HttpClient::redirect_target`, one hop at a time, at most 5) until a board address appears. A link to a single pin is
+refused with a message. Board names in Cyrillic (or any script) are accepted encoded or not and saved in one encoded form.
 
 ## Q19. A board and the Pinterest source are tied together in the engine
 

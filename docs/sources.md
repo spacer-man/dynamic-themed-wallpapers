@@ -95,8 +95,10 @@ the wallpaper uses the smallest step that still covers the screen after cropping
 
 - **Subject:** a board address pasted by the user (`pinterest.com/<user>/<board>/`, also `ru.pinterest.com`, `pinterest.co.uk`,
   a trailing section or query; the `.rss` address itself works). It is normalised to
-  `https://www.pinterest.com/<user>/<board>.rss`. Short `pin.it` links are **not** followed (that needs a redirect and often
-  ends on a single pin): the app asks for the full board address. Adding a board fetches the feed once to check it exists
+  `https://www.pinterest.com/<user>/<board>.rss`. Names may be percent-encoded or not
+  (`обои` = `%D0%BE%D0%B1%D0%BE%D0%B8`); the saved form is encoded. Short `pin.it` links (the Share button of the Pinterest
+  app) are opened one redirect at a time (at most 5, via `pin.it` → `api.pinterest.com/url_shortener/…` → board) until a
+  board address shows up; a link that ends on a single pin is refused. Adding a board fetches the feed once to check it exists
   (public) and to read its name.
 - **Boards and Pinterest go together.** Activating a board switches the source to Pinterest and remembers the previous one;
   choosing a place or words restores it. Other sources are shown as unsupported while a board is active.
