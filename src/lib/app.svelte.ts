@@ -419,7 +419,7 @@ export const app = new App();
  */
 export function isSourceError(e: unknown, active?: SourceStatus): boolean {
   if (!(e instanceof AppError)) return false;
-  if (e.kind === 'network' || e.kind === 'not_found' || e.kind === 'parse') return true;
+  if (e.kind === 'network' || e.kind === 'refused' || e.kind === 'not_found' || e.kind === 'parse') return true;
   return e.kind === 'config' && active?.state === 'needs_key';
 }
 

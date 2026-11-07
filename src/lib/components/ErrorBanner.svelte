@@ -6,7 +6,13 @@
 
 {#if app.error}
   <div class="banner" class:wide={app.fallbackOptions.length > 0} role="alert">
-    <span>{t(`error.${app.error.kind}`)}</span>
+    <span>
+      {t(`error.${app.error.kind}`)}
+      {#if app.error.message}
+        <!-- The engine's own words (status, host): what to send when reporting a problem. -->
+        <small class="detail">{app.error.message}</small>
+      {/if}
+    </span>
     {#if app.fallbackOptions.length > 0}
       <!-- One-time substitutes: the chosen source stays as it is. -->
       <div class="options">
@@ -38,6 +44,15 @@
     font-size: var(--fs-sm);
     box-shadow: 0 6px 24px color-mix(in srgb, #000 35%, transparent);
     animation: drop 240ms var(--ease);
+  }
+
+  .detail {
+    display: block;
+    margin-top: var(--space-1);
+    opacity: 0.75;
+    font-size: var(--fs-xs);
+    overflow-wrap: anywhere;
+    user-select: text;
   }
 
   .wide > span {

@@ -437,7 +437,15 @@ impl Engine {
         match subjects.find_board(&board.rss_url).map(|s| s.id.clone()) {
             Some(id) => subjects.active = Some(id),
             None => {
-                let body = self.http.get(&board.rss_url, crate::http::MAX_JSON_BYTES)?;
+                let body = self
+                    .http
+                    .get(&board.rss_url, crate::http::MAX_JSON_BYTES)
+                    .map_err(|e| match e {
+                        Error::Network(m) => {
+                            Error::Network(format!("reading {}: {m}", board.rss_url))
+                        }
+                        e => e,
+                    })?;
                 let feed = source::pinterest::parse_feed(&body)?;
                 if feed.pins.is_empty() {
                     return Err(Error::NotFound(

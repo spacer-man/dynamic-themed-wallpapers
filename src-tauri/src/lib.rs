@@ -26,6 +26,7 @@ pub struct CmdError {
 impl From<Error> for CmdError {
     fn from(e: Error) -> Self {
         let kind = match &e {
+            Error::Status { status, .. } if *status != 429 && *status < 500 => "refused",
             Error::Network(_) | Error::Status { .. } => "network",
             Error::NotFound(_) => "not_found",
             Error::Config(_) => "config",

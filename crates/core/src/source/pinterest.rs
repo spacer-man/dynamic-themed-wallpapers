@@ -137,7 +137,11 @@ pub fn resolve_board_url(http: &dyn HttpClient, input: &str) -> Result<BoardRef>
         format!("https://{s}")
     };
     for _ in 0..MAX_HOPS {
-        match http.redirect_target(&url)? {
+        let hop = http.redirect_target(&url).map_err(|e| match e {
+            Error::Network(m) => Error::Network(format!("opening {url}: {m}")),
+            e => e,
+        })?;
+        match hop {
             Some(next) => {
                 if let Ok(board) = parse_board_url(&next) {
                     return Ok(board);
