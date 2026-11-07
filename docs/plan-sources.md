@@ -32,3 +32,17 @@ Decisions taken without the owner go to `docs/OPEN-QUESTIONS.md`.
 ## How the work runs
 
 The main session plans and reviews; implementation runs in subagents on Sonnet to save limits and keep context clean.
+
+## Next: Pinterest sign-in (official API v5)
+
+Board feeds without sign-in (RSS, embed widget) only see public profiles; the owner keeps a private profile.
+Agreed on 2026-11-07:
+
+- **Two board modes:** "My boards" through sign-in to Pinterest (pick from the list, private profile and secret boards
+  included) and "Board by link" (today's widget/RSS path, public profiles only, also other people's boards).
+- **Owner's own Pinterest app.** The client id and secret are entered in settings by the user, never shipped in the APK.
+- **Redirect URI:** `dtw://pinterest-auth` (custom scheme opens the app). If Pinterest refuses custom schemes, fall back to
+  an https page on GitHub Pages that forwards to the app.
+- **Scopes:** `user_accounts:read`, `boards:read`, `pins:read`, `boards:read_secret`, `pins:read_secret`.
+- **Order:** the owner registers the app first; the code is written once trial access is approved, so it can be tested
+  against the live API right away. Token lifetimes and image sizes are taken from the real responses, not from memory.
