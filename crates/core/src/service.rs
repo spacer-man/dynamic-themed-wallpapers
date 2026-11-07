@@ -431,7 +431,7 @@ impl Engine {
     /// fetched once to check the board exists and to learn its name. Activating a board switches
     /// the source to Pinterest.
     pub fn add_board(&self, input: &str) -> Result<Subjects> {
-        let board = source::pinterest::parse_board_url(input)?;
+        let board = source::pinterest::resolve_board_url(self.http.as_ref(), input)?;
         let store = self.store()?;
         let mut subjects = self.load_subjects(&store)?;
         match subjects.find_board(&board.rss_url).map(|s| s.id.clone()) {

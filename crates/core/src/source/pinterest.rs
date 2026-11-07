@@ -47,8 +47,9 @@ pub struct BoardRef {
 
 /// Accepts `pinterest.com/<user>/<board>/`, with or without scheme, `www.` or a country
 /// domain/subdomain (`ru.pinterest.com`, `pinterest.co.uk`, `pinterest.de`…), a trailing section
-/// or query, or the `.rss` URL itself. Short `pin.it` links are not followed (that needs a
-/// request and often leads to a single pin): the error asks for the full address.
+/// or query, or the `.rss` URL itself. Names may be percent-encoded or not (`обои` and
+/// `%D0%BE%D0%B1%D0%BE%D0%B8` are the same board). Short `pin.it` links need a request, see
+/// [`resolve_board_url`].
 pub fn parse_board_url(input: &str) -> Result<BoardRef> {
     let bad = |why: &str| Error::Config(format!("not a Pinterest board address: {why}"));
     let s = input.trim();
@@ -58,10 +59,8 @@ pub fn parse_board_url(input: &str) -> Result<BoardRef> {
         .unwrap_or(s);
     let (host, path) = rest.split_once('/').unwrap_or((rest, ""));
     let host = host.to_ascii_lowercase();
-    if host == "pin.it" || host.ends_with(".pin.it") {
-        return Err(bad(
-            "short pin.it links are not followed, open it and paste the address of the board",
-        ));
+    if is_short_host(&host) {
+        return Err(bad("short pin.it links have to be opened first"));
     }
     if !is_pinterest_host(&host) {
         return Err(bad("the host is not pinterest"));
@@ -71,30 +70,97 @@ pub fn parse_board_url(input: &str) -> Result<BoardRef> {
     let user = segs.next().ok_or_else(|| bad("a board has /user/board"))?;
     let board = segs.next().ok_or_else(|| bad("a board has /user/board"))?;
     let board = board.strip_suffix(".rss").unwrap_or(board);
-    if RESERVED.contains(&user.to_ascii_lowercase().as_str()) || board.is_empty() {
+    let decode = |s: &str| {
+        percent_encoding::percent_decode_str(s)
+            .decode_utf8()
+            .map(|d| d.into_owned())
+            .map_err(|_| bad("unexpected characters"))
+    };
+    let (user, board) = (decode(user)?, decode(board)?);
+    if RESERVED.contains(&user.to_lowercase().as_str()) || board.is_empty() {
         return Err(bad("that looks like a pin or a page, not a board"));
     }
     let safe = |s: &str| {
         s.chars()
-            .all(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | '%' | '+'))
+            .all(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | '+'))
     };
-    if !safe(user) || !safe(board) {
+    if !safe(&user) || !safe(&board) {
         return Err(bad("unexpected characters"));
     }
+    let rss_url = format!(
+        "{HOST}/{}/{}.rss",
+        encode_segment(&user),
+        encode_segment(&board)
+    );
     Ok(BoardRef {
-        user: user.to_owned(),
-        board: board.to_owned(),
-        rss_url: format!("{HOST}/{user}/{board}.rss"),
+        user,
+        board,
+        rss_url,
     })
 }
 
-/// `pinterest.<tld>`, optionally `<tld2>` (`co.uk`, `com.au`) and one subdomain (`www`, `ru`).
+/// Percent-encodes everything but ASCII letters, digits and `-_.` — one canonical form, so the
+/// same board pasted encoded or not is saved once.
+fn encode_segment(s: &str) -> String {
+    const SET: &percent_encoding::AsciiSet = &percent_encoding::NON_ALPHANUMERIC
+        .remove(b'-')
+        .remove(b'_')
+        .remove(b'.');
+    percent_encoding::utf8_percent_encode(s, SET).to_string()
+}
+
+fn is_short_host(host: &str) -> bool {
+    host == "pin.it" || host.ends_with(".pin.it")
+}
+
+/// Hops through at most this many redirects of a short link.
+const MAX_HOPS: usize = 5;
+
+/// Like [`parse_board_url`], but also opens short `pin.it` links (the "Share" button of the
+/// Pinterest app gives those), one redirect at a time, until a board address shows up.
+pub fn resolve_board_url(http: &dyn HttpClient, input: &str) -> Result<BoardRef> {
+    let s = input.trim();
+    let host = s
+        .strip_prefix("https://")
+        .or_else(|| s.strip_prefix("http://"))
+        .unwrap_or(s)
+        .split(['/', '?', '#'])
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if !is_short_host(&host) {
+        return parse_board_url(s);
+    }
+    let mut url = if s.contains("://") {
+        s.to_owned()
+    } else {
+        format!("https://{s}")
+    };
+    for _ in 0..MAX_HOPS {
+        match http.redirect_target(&url)? {
+            Some(next) => {
+                if let Ok(board) = parse_board_url(&next) {
+                    return Ok(board);
+                }
+                url = next;
+            }
+            None => break,
+        }
+    }
+    Err(Error::Config(
+        "this short link does not lead to a Pinterest board (a single pin?)".into(),
+    ))
+}
+
+/// `pinterest.<tld>`, optionally `<tld2>` (`co.uk`, `com.au`) and one subdomain: `www` or a
+/// two-letter country (`ru`). Others (`api.` of the short-link redirect) are not board pages.
 fn is_pinterest_host(host: &str) -> bool {
     let labels: Vec<&str> = host.split('.').collect();
     let Some(i) = labels.iter().position(|l| *l == "pinterest") else {
         return false;
     };
-    i <= 1
+    let sub_ok = i == 0 || (i == 1 && (labels[0] == "www" || labels[0].len() == 2));
+    sub_ok
         && (1..=2).contains(&(labels.len() - i - 1))
         && labels[i + 1..].iter().all(|l| l.len() <= 3)
 }
@@ -434,12 +500,54 @@ mod tests {
             "https://example.com/alice/board/",
             "https://notpinterest.com/alice/board/",
             "https://evil.com/pinterest.com/alice/board/",
+            "https://api.pinterest.com/url_shortener/abc/redirect/",
             "https://pin.it/abc123",
             "https://pinterest.com/alice/bo ard/",
+            "https://pinterest.com/alice/bo%20ard/",
+            "https://pinterest.com/alice/%FF/",
             "",
         ] {
             assert!(parse_board_url(bad).is_err(), "{bad}");
         }
+    }
+
+    #[test]
+    fn cyrillic_boards_have_one_form() {
+        let want = "https://www.pinterest.com/alice/%D0%BE%D0%B1%D0%BE%D0%B8.rss";
+        for input in [
+            "https://ru.pinterest.com/alice/%D0%BE%D0%B1%D0%BE%D0%B8/?invite_code=0000&sender=1",
+            "https://ru.pinterest.com/alice/%d0%be%d0%b1%d0%be%d0%b8/",
+            "ru.pinterest.com/alice/обои/",
+        ] {
+            let b = parse_board_url(input).unwrap();
+            assert_eq!(b.rss_url, want, "{input}");
+            assert_eq!(b.board, "обои");
+        }
+    }
+
+    #[test]
+    fn short_links_are_opened() {
+        use crate::http::fixture::FixtureHttp;
+        let board = "https://ru.pinterest.com/alice/%D0%BE%D0%B1%D0%BE%D0%B8/?invite_code=x";
+        let http = FixtureHttp::new()
+            .redirect(
+                "https://pin.it/AbCd123",
+                "https://api.pinterest.com/url_shortener/AbCd123/redirect/",
+            )
+            .redirect("https://api.pinterest.com/url_shortener/AbCd123/", board);
+        let b = resolve_board_url(&http, " pin.it/AbCd123 ").unwrap();
+        assert_eq!(b.board, "обои");
+        assert_eq!(http.requests().len(), 2);
+
+        let to_pin =
+            FixtureHttp::new().redirect("https://pin.it/p", "https://www.pinterest.com/pin/123/");
+        assert!(resolve_board_url(&to_pin, "https://pin.it/p").is_err());
+        let nowhere = FixtureHttp::new();
+        assert!(resolve_board_url(&nowhere, "https://pin.it/x").is_err());
+        // Ordinary addresses make no request.
+        let none = FixtureHttp::new();
+        resolve_board_url(&none, "pinterest.com/alice/misty-forests").unwrap();
+        assert!(none.requests().is_empty());
     }
 
     #[test]

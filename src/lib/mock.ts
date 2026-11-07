@@ -351,7 +351,9 @@ export async function mockCall(cmd: string, a: Record<string, unknown>): Promise
       return db.subjects;
     }
     case 'add_board_subject': {
-      const b = parseBoard(String(a.url)) ?? fail('config', 'not a Pinterest board address');
+      // The mock can't follow redirects: a short pin.it link stands for a sample board.
+      const input = /^(?:https?:\/\/)?pin\.it\//i.test(String(a.url).trim()) ? 'pinterest.com/sample/misty-forests' : String(a.url);
+      const b = parseBoard(input) ?? fail('config', 'not a Pinterest board address');
       await sleep(350);
       const same = db.subjects.items.find((x) => x.kind === 'board' && x.url === b.url);
       if (same) db.subjects.active = same.id;
