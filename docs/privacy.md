@@ -1,6 +1,6 @@
 # Privacy
 
-The app has **no telemetry, no analytics, no accounts and no crash reporting**.
+The app has **no telemetry, no analytics, no accounts and no crash reporting**. The user-facing policy is [PRIVACY.md](../PRIVACY.md); this file is the technical list behind it.
 
 ## Network endpoints
 
