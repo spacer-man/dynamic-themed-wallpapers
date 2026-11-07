@@ -53,7 +53,7 @@ The release notes list the SHA-256 checksum.
 The app only talks to `commons.wikimedia.org`, `www.wikidata.org`, `query.wikidata.org` and — only for the source you choose
 (and, for Unsplash, Pexels and Pixabay, your own key) — `api.openverse.org`, `wallhaven.cc`, `api.unsplash.com`,
 `api.pexels.com`, `pixabay.com` or `www.pinterest.com`, plus the image hosts they name. Everything it learns about your taste stays on the device.
-See [docs/privacy.md](docs/privacy.md).
+See the [privacy policy](PRIVACY.md) and the full list of network addresses in [docs/privacy.md](docs/privacy.md).
 
 ## Attribution
 

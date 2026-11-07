@@ -54,7 +54,7 @@ Android-приложение, которое каждый день ставит 
 Приложение обращается только к `commons.wikimedia.org`, `www.wikidata.org`, `query.wikidata.org` и — только для выбранного вами
 источника (а для Unsplash, Pexels и Pixabay — ещё и с вашим ключом) — `api.openverse.org`, `wallhaven.cc`,
 `api.unsplash.com`, `api.pexels.com`, `pixabay.com` или `www.pinterest.com`, а также серверы изображений, которые они укажут. Всё, что оно узнаёт о ваших вкусах, остаётся на
-устройстве. Подробнее — [docs/privacy.md](docs/privacy.md).
+устройстве. Подробнее — [политика конфиденциальности](PRIVACY.md) и список адресов в [docs/privacy.md](docs/privacy.md).
 
 ## Авторство
 
