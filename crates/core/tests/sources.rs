@@ -587,7 +587,11 @@ fn pinterest_board_reads_the_feed_and_probes_sizes() {
         &phone(),
     )
     .unwrap();
-    assert_eq!(http.requests().len(), before + 1, "only the feed again");
+    assert_eq!(
+        http.requests().len(),
+        before + 2,
+        "only the widget (404 here) and the feed again"
+    );
 }
 
 #[test]

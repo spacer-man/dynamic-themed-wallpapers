@@ -1,0 +1,50 @@
+{
+  "status": "success",
+  "code": 0,
+  "data": {
+    "board": { "name": "Туманные леса", "url": "/alice/misty-forests/", "pin_count": 42 },
+    "user": { "username": "alice", "full_name": "Alice Example" },
+    "pins": [
+      {
+        "id": "111111111111111",
+        "description": "Pine fog",
+        "link": null,
+        "is_video": false,
+        "images": {
+          "237x": { "url": "https://i.pinimg.com/237x/aa/bb/cc/aaaa1111.jpg", "width": 237, "height": 500 },
+          "564x": { "url": "https://i.pinimg.com/564x/aa/bb/cc/aaaa1111.jpg", "width": 564, "height": 1200 }
+        },
+        "pinner": { "full_name": "Bob Photographer", "username": "bobphoto" }
+      },
+      {
+        "id": "222222222222222",
+        "description": "Мокрый лес",
+        "link": "https://example.com/forest",
+        "is_video": false,
+        "images": {
+          "564x": { "url": "https://i.pinimg.com/564x/dd/ee/ff/bbbb2222.jpg", "width": 564, "height": 1000 },
+          "237x": { "url": "https://i.pinimg.com/237x/dd/ee/ff/bbbb2222.jpg", "width": 237, "height": 420 }
+        },
+        "pinner": { "full_name": "", "username": "carol_makes" },
+        "repin_count": 3
+      },
+      {
+        "id": "444444444444444",
+        "description": "A video pin",
+        "is_video": true,
+        "images": {
+          "564x": { "url": "https://i.pinimg.com/564x/99/88/77/video4444.jpg", "width": 564, "height": 1000 }
+        },
+        "pinner": { "username": "dave" }
+      },
+      {
+        "id": 333333333333333,
+        "description": "",
+        "images": {
+          "237x": { "url": "https://i.pinimg.com/237x/11/22/33/cccc3333.jpg", "width": 237, "height": 350 }
+        }
+      },
+      { "id": "555555555555555", "description": "No image" }
+    ]
+  }
+}

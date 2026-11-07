@@ -188,3 +188,10 @@ scratch crate. Overridden signatures (`onNewIntent`, `Plugin` commands), the man
 Pinterest behaviour rests on fixtures from the described format. A one-time fallback photo is recorded in the history with its
 own source, and the next prefetch goes back to the chosen source.
 
+## Q27. Pinterest boards: widget JSON primary, RSS fallback
+
+Real device, Nov 2026: `pinterest.com/<user>/<board>.rss` and `<user>/feed.rss` answered 404 "Board not found" for a public
+board. **Owner's choice:** read the board from the embed-widget endpoint `widgets.pinterest.com/v3/pidgets/boards/<user>/<board>/pins/`
+first and keep the RSS as the fallback; the saved board identity stays the `.rss` address (no migration). Risks: the endpoint
+is unofficial and may change; the JSON shape is written from memory and tested only on a fixture (Pinterest was not contacted),
+so a different real shape would show up as "no usable pins" and silently use the RSS.

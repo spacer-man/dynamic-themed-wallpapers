@@ -18,6 +18,7 @@ This is the complete list. Adding an endpoint requires updating this file in the
 | `api.pexels.com`, `images.pexels.com` | **only if you pick Pexels and enter your own key** | search words, your key (header) |
 | `pixabay.com`, `cdn.pixabay.com` | **only if you pick Pixabay and enter your own key** | search words, screen size, your key (in the URL; scrubbed from errors) |
 | `www.pinterest.com` | **only if you pick Pinterest** (adding a board) | the board address you pasted (`/<user>/<board>.rss`); `robots.txt` for the availability check |
+| `widgets.pinterest.com` | **only if you pick Pinterest** (adding a board, refreshing) | the board's user and name in the path (`/v3/pidgets/boards/<user>/<board>/pins/`), read first; the RSS address above is the fallback |
 | `i.pinimg.com` | **only if you pick Pinterest** | the pin images: the first 64 KB of each (to read its size), then the previews and the chosen photo |
 
 Only the source you picked is contacted. "Check all" in the source settings sends one small request to each source that

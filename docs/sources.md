@@ -95,18 +95,25 @@ the wallpaper uses the smallest step that still covers the screen after cropping
 
 - **Subject:** a board address pasted by the user (`pinterest.com/<user>/<board>/`, also `ru.pinterest.com`, `pinterest.co.uk`,
   a trailing section or query; the `.rss` address itself works). It is normalised to
-  `https://www.pinterest.com/<user>/<board>.rss`. Names may be percent-encoded or not
+  `https://www.pinterest.com/<user>/<board>.rss`, which stays the saved identity of the board. Names may be percent-encoded or not
   (`обои` = `%D0%BE%D0%B1%D0%BE%D0%B8`); the saved form is encoded. Short `pin.it` links (the Share button of the Pinterest
   app) are opened one redirect at a time (at most 5, via `pin.it` → `api.pinterest.com/url_shortener/…` → board) until a
-  board address shows up; a link that ends on a single pin is refused. Adding a board fetches the feed once to check it exists
-  (public) and to read its name.
+  board address shows up; a link that ends on a single pin is refused. Adding a board reads it once to check it exists
+  (public) and to learn its name.
+- **Reading a board: widget first, RSS as the fallback.** The primary read is the public JSON behind Pinterest's own board embed
+  widget, `https://widgets.pinterest.com/v3/pidgets/boards/<user>/<board>/pins/` (names encoded as in the RSS address). Pins
+  with `is_video` are skipped, the image is the largest of `images.*`, the pin links to `pinterest.com/pin/<id>/`, the author is
+  the pinner's full name or username, the title is the board name. On any error, a `status` other than `success`, or no usable
+  pin, the RSS feed is tried. If both fail the widget's error is shown, except that two 404s become "Pinterest did not find this
+  board; is it public?". Why: on a real device in Nov 2026 the RSS answered 404 "Board not found" for a public board. The widget
+  endpoint is unofficial and may change or disappear; nothing is sent beyond the app's normal headers.
 - **Boards and Pinterest go together.** Activating a board switches the source to Pinterest and remembers the previous one;
   choosing a place or words restores it. Other sources are shown as unsupported while a board is active.
-- **Only the latest ~25 pins.** The RSS feed carries no more; older pins of a big board never appear. The UI says so.
-- **Images.** Items hold `<img src="https://i.pinimg.com/236x/ab/cd/ef/hash.jpg">` in the escaped description. The wallpaper
+- **Only the latest ~25 pins.** Neither the widget nor the RSS feed carries more; older pins of a big board never appear. The UI says so.
+- **Images.** (RSS) Items hold `<img src="https://i.pinimg.com/236x/ab/cd/ef/hash.jpg">` in the escaped description. The wallpaper
   uses `…/originals/ab/cd/ef/hash.jpg`; if that cannot be fetched or decoded (404, WebP — the decoder handles JPEG/PNG only),
   `/1200x/` then `/736x/`. Scoring and the in-app preview use `/736x/`. GIFs are skipped.
-- **Dimensions** are not in the feed: each image is probed with a ranged request for its first 64 KB and the header is read
+- **Dimensions** are not trusted from the feed (the widget's sizes are thumbnails): each image is probed with a ranged request for its first 64 KB and the header is read
   (up to 25 small requests per refill, six at a time, memoised within one refill). An image is kept only if it **covers the
   screen without upscaling**; everything smaller is dropped (decision with the owner), so on a phone only large pins qualify.
 - **Caption:** "Pinterest: <board name>" on the wallpaper; the credit line is "Pin by <author> on Pinterest" if the feed names
