@@ -309,9 +309,15 @@ fn is_not_found(e: &Error) -> bool {
 /// the widget's error is returned (it is the more meaningful one), except that two 404s become
 /// "not found". A widget answer without pins is returned as is when the RSS has none either.
 pub fn fetch_board(http: &dyn HttpClient, board: &BoardRef) -> Result<Feed> {
+    let mut snippet = String::new();
     let widget = http
         .get(&board.widget_url, MAX_JSON_BYTES)
-        .and_then(|body| parse_widget(&body, &board.widget_url));
+        .and_then(|body| {
+            // Kept for the error below: if the answer has a shape we don't know, its start is the
+            // quickest way to see what changed.
+            snippet = String::from_utf8_lossy(&body[..body.len().min(160)]).into_owned();
+            parse_widget(&body, &board.widget_url)
+        });
     if let Ok(feed) = &widget {
         if !feed.pins.is_empty() {
             return widget;
@@ -322,7 +328,11 @@ pub fn fetch_board(http: &dyn HttpClient, board: &BoardRef) -> Result<Feed> {
         .and_then(|body| parse_feed(&body));
     match (widget, rss) {
         (_, Ok(feed)) if !feed.pins.is_empty() => Ok(feed),
-        (Ok(feed), _) => Ok(feed),
+        (Ok(_), Err(r)) => Err(Error::parse(
+            "Pinterest widget",
+            format!("no pins we can read in {snippet:?}…; RSS: {r}"),
+        )),
+        (Ok(feed), Ok(_)) => Ok(feed),
         (Err(w), Err(r)) if is_not_found(&w) && is_not_found(&r) => Err(Error::NotFound(
             "Pinterest did not find this board; is it public?".into(),
         )),
