@@ -62,7 +62,7 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@v4
         with:
           # Only installs the SDK command-line tools; its default package list has the removed 'tools' package.
           packages: ''
@@ -72,14 +72,16 @@ jobs:
         with:
           targets: aarch64-linux-android
       - uses: Swatinem/rust-cache@v2
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-provider: basic # the default "enhanced" cache is a commercial service
       - uses: oven-sh/setup-bun@v2
       - run: bun install --frozen-lockfile
       - name: Build debug APK
         env:
           NDK_HOME: ${{ env.ANDROID_HOME }}/ndk/27.2.12479018
         run: ./node_modules/.bin/tauri android build --debug --apk --target aarch64 --features sqlite-bundled
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: debug-apk
           path: src-tauri/gen/android/app/build/outputs/apk/universal/debug/*.apk
