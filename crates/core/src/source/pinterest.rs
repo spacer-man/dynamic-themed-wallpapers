@@ -1,5 +1,7 @@
-//! Pinterest boards, through the public RSS feed of a board (`…/<user>/<board>.rss`): no key, no
-//! login, no search by words. The feed holds only the latest ~25 pins of the board.
+//! Pinterest boards: no key, no login, no search by words. A board is read from the public JSON
+//! endpoint behind Pinterest's own board embed widget (`widgets.pinterest.com/v3/pidgets/…`);
+//! the RSS feed of the board (`…/<user>/<board>.rss`) is the fallback, because it answered 404 on
+//! a real device. Both hold only the latest ~25 pins of the board. See [`fetch_board`].
 //!
 //! Dimensions are not in the feed, so each pin's image is probed with a ranged download of its
 //! first bytes (the image header is enough). The wallpaper uses the `originals` rendition and
@@ -13,6 +15,7 @@ use std::sync::Mutex;
 
 use quick_xml::events::Event;
 use quick_xml::Reader;
+use serde::Deserialize;
 
 use super::{Candidate, CandidateRequest, Curation, License, Search, Source, SourceKind};
 use crate::error::{Error, Result};
@@ -20,6 +23,7 @@ use crate::http::{HttpClient, MAX_JSON_BYTES};
 use crate::text::truncate;
 
 const HOST: &str = "https://www.pinterest.com";
+const WIDGET_HOST: &str = "https://widgets.pinterest.com";
 const IMAGE_HOST: &str = "https://i.pinimg.com";
 /// Enough for the dimensions of any JPEG/PNG whose header carries a few KB of EXIF/ICC data.
 const HEADER_BYTES: usize = 64 * 1024;
@@ -41,8 +45,10 @@ const RESERVED: [&str; 14] = [
 pub struct BoardRef {
     pub user: String,
     pub board: String,
-    /// `https://www.pinterest.com/<user>/<board>.rss`
+    /// `https://www.pinterest.com/<user>/<board>.rss` — the saved identity of the board.
     pub rss_url: String,
+    /// `https://widgets.pinterest.com/v3/pidgets/boards/<user>/<board>/pins/` — read first.
+    pub widget_url: String,
 }
 
 /// Accepts `pinterest.com/<user>/<board>/`, with or without scheme, `www.` or a country
@@ -92,10 +98,16 @@ pub fn parse_board_url(input: &str) -> Result<BoardRef> {
         encode_segment(&user),
         encode_segment(&board)
     );
+    let widget_url = format!(
+        "{WIDGET_HOST}/v3/pidgets/boards/{}/{}/pins/",
+        encode_segment(&user),
+        encode_segment(&board)
+    );
     Ok(BoardRef {
         user,
         board,
         rss_url,
+        widget_url,
     })
 }
 
@@ -184,6 +196,139 @@ pub struct Feed {
     /// Board name (channel title).
     pub title: String,
     pub pins: Vec<Pin>,
+}
+
+/// The JSON of the board embed widget. Everything is optional, unknown fields are ignored.
+#[derive(Debug, Default, Deserialize)]
+struct WidgetReply {
+    status: Option<String>,
+    data: Option<WidgetData>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct WidgetData {
+    pins: Option<Vec<WidgetPin>>,
+    board: Option<WidgetBoard>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct WidgetBoard {
+    name: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct WidgetPin {
+    id: Option<serde_json::Value>,
+    description: Option<String>,
+    is_video: Option<bool>,
+    images: Option<HashMap<String, WidgetImage>>,
+    pinner: Option<WidgetPinner>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct WidgetImage {
+    url: Option<String>,
+    width: Option<u32>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct WidgetPinner {
+    full_name: Option<String>,
+    username: Option<String>,
+}
+
+/// Parse the answer of the board widget endpoint into the same [`Feed`] the RSS gives. Videos and
+/// pins without an image are skipped; `status` other than `success` is a board that was not found.
+pub fn parse_widget(json: &[u8], url: &str) -> Result<Feed> {
+    let reply: WidgetReply =
+        serde_json::from_slice(json).map_err(|e| Error::parse("pinterest widget", e))?;
+    if reply.status.as_deref().is_some_and(|s| s != "success") {
+        return Err(Error::Status {
+            status: 404,
+            url: url.to_owned(),
+        });
+    }
+    let data = reply.data.unwrap_or_default();
+    let title = data
+        .board
+        .and_then(|b| b.name)
+        .map(|n| n.trim().to_owned())
+        .unwrap_or_default();
+    let mut pins = Vec::new();
+    for p in data.pins.unwrap_or_default() {
+        if p.is_video == Some(true) {
+            continue;
+        }
+        let id = match &p.id {
+            Some(serde_json::Value::String(s)) => s.trim().to_owned(),
+            Some(serde_json::Value::Number(n)) => n.to_string(),
+            _ => String::new(),
+        };
+        // The largest rendition; the width falls back to the key (`564x`).
+        let image = p
+            .images
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|(k, i)| {
+                let url = i.url.filter(|u| !u.is_empty())?;
+                let w = i
+                    .width
+                    .or_else(|| k.trim_end_matches('x').parse().ok())
+                    .unwrap_or(0);
+                Some((w, k, url))
+            })
+            .max()
+            .map(|(_, _, u)| u);
+        let Some(image) = image else { continue };
+        let author = p.pinner.and_then(|n| {
+            [n.full_name, n.username]
+                .into_iter()
+                .flatten()
+                .map(|s| s.trim().to_owned())
+                .find(|s| !s.is_empty())
+        });
+        pins.push(Pin {
+            title: p.description.unwrap_or_default().trim().to_owned(),
+            link: if id.is_empty() {
+                String::new()
+            } else {
+                format!("{HOST}/pin/{id}/")
+            },
+            author,
+            image,
+        });
+    }
+    Ok(Feed { title, pins })
+}
+
+fn is_not_found(e: &Error) -> bool {
+    matches!(e, Error::Status { status: 404, .. } | Error::NotFound(_))
+}
+
+/// Read a board: the widget JSON first; on any error or no usable pin, the RSS feed. If both fail
+/// the widget's error is returned (it is the more meaningful one), except that two 404s become
+/// "not found". A widget answer without pins is returned as is when the RSS has none either.
+pub fn fetch_board(http: &dyn HttpClient, board: &BoardRef) -> Result<Feed> {
+    let widget = http
+        .get(&board.widget_url, MAX_JSON_BYTES)
+        .and_then(|body| parse_widget(&body, &board.widget_url));
+    if let Ok(feed) = &widget {
+        if !feed.pins.is_empty() {
+            return widget;
+        }
+    }
+    let rss = http
+        .get(&board.rss_url, MAX_JSON_BYTES)
+        .and_then(|body| parse_feed(&body));
+    match (widget, rss) {
+        (_, Ok(feed)) if !feed.pins.is_empty() => Ok(feed),
+        (Ok(feed), _) => Ok(feed),
+        (Err(w), Err(r)) if is_not_found(&w) && is_not_found(&r) => Err(Error::NotFound(
+            "Pinterest did not find this board; is it public?".into(),
+        )),
+        (Err(_), Ok(feed)) => Ok(feed),
+        (Err(w), Err(_)) => Err(w),
+    }
 }
 
 fn unescape_ref(name: &str) -> Option<char> {
@@ -414,8 +559,7 @@ impl Source for PinterestSource<'_> {
                 "Pinterest only serves Pinterest boards".into(),
             ));
         };
-        let body = self.http.get(url, MAX_JSON_BYTES)?;
-        let feed = parse_feed(&body)?;
+        let feed = fetch_board(self.http, &parse_board_url(url)?)?;
         let label: &str = if name.is_empty() { &feed.title } else { name };
         let place_label = format!("Pinterest: {label}");
 
@@ -582,6 +726,111 @@ mod tests {
                 .pins
                 .is_empty()
         );
+    }
+
+    fn widget_fixture() -> Vec<u8> {
+        std::fs::read(format!(
+            "{}/tests/fixtures/pinterest/board.json",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn widget_urls_are_built_like_the_rss_one() {
+        let b = parse_board_url("ru.pinterest.com/alice/обои/").unwrap();
+        assert_eq!(
+            b.widget_url,
+            "https://widgets.pinterest.com/v3/pidgets/boards/alice/%D0%BE%D0%B1%D0%BE%D0%B8/pins/"
+        );
+    }
+
+    #[test]
+    fn widget_json_is_parsed() {
+        let feed = parse_widget(&widget_fixture(), "u").unwrap();
+        assert_eq!(feed.title, "Туманные леса");
+        // The video and the pin without images are dropped.
+        assert_eq!(feed.pins.len(), 3);
+        assert_eq!(feed.pins[0].title, "Pine fog");
+        assert_eq!(feed.pins[0].author.as_deref(), Some("Bob Photographer"));
+        assert_eq!(
+            feed.pins[0].link,
+            "https://www.pinterest.com/pin/111111111111111/"
+        );
+        assert_eq!(
+            feed.pins[0].image,
+            "https://i.pinimg.com/564x/aa/bb/cc/aaaa1111.jpg"
+        );
+        assert_eq!(feed.pins[1].author.as_deref(), Some("carol_makes"));
+        assert_eq!(
+            feed.pins[1].link,
+            "https://www.pinterest.com/pin/222222222222222/"
+        );
+        assert_eq!(
+            feed.pins[2].link,
+            "https://www.pinterest.com/pin/333333333333333/"
+        );
+
+        assert!(parse_widget(br#"{"status":"success"}"#, "u")
+            .unwrap()
+            .pins
+            .is_empty());
+        assert!(
+            parse_widget(br#"{"status":"success","data":{"pins":null}}"#, "u")
+                .unwrap()
+                .pins
+                .is_empty()
+        );
+        let e = parse_widget(br#"{"status":"failure","message":"x"}"#, "u").unwrap_err();
+        assert!(matches!(e, Error::Status { status: 404, .. }));
+        assert!(parse_widget(b"<html>", "u").is_err());
+    }
+
+    #[test]
+    fn widget_first_then_rss_then_not_found() {
+        use crate::http::fixture::FixtureHttp;
+        let board = parse_board_url("pinterest.com/alice/misty-forests").unwrap();
+        let rss = std::fs::read(format!(
+            "{}/tests/fixtures/pinterest/board.rss",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .unwrap();
+
+        // Widget answers: RSS is not asked.
+        let http = FixtureHttp::new()
+            .route(&["pidgets/boards/alice/misty-forests"], widget_fixture())
+            .route(&["misty-forests.rss"], rss.clone());
+        assert_eq!(fetch_board(&http, &board).unwrap().title, "Туманные леса");
+        assert_eq!(http.requests().len(), 1);
+
+        // Widget missing: RSS is used.
+        let http = FixtureHttp::new().route(&["misty-forests.rss"], rss.clone());
+        assert_eq!(
+            fetch_board(&http, &board).unwrap().title,
+            "Misty & quiet forests"
+        );
+        assert_eq!(http.requests().len(), 2);
+
+        // Widget without pins: RSS is used.
+        let http = FixtureHttp::new()
+            .route(&["pidgets"], r#"{"status":"success","data":{"pins":[]}}"#)
+            .route(&["misty-forests.rss"], rss);
+        assert_eq!(fetch_board(&http, &board).unwrap().pins.len(), 4);
+
+        // Both 404.
+        let http = FixtureHttp::new();
+        let e = fetch_board(&http, &board).unwrap_err();
+        assert!(
+            matches!(&e, Error::NotFound(m) if m == "Pinterest did not find this board; is it public?"),
+            "{e}"
+        );
+
+        // Widget has a real error, RSS 404: the widget's error wins.
+        let http = FixtureHttp::new().route(&["pidgets"], "not json");
+        assert!(matches!(
+            fetch_board(&http, &board).unwrap_err(),
+            Error::Parse { .. }
+        ));
     }
 
     #[test]
