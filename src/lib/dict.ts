@@ -27,6 +27,7 @@ export const en: Dict = {
   'details.source': 'Source page',
   'details.place': 'Place',
   'details.close': 'Close',
+  'back.again': 'Swipe back again to exit',
   'details.apply': 'Set as wallpaper',
   'details.applying': 'Setting…',
 
@@ -201,6 +202,7 @@ export const ru: Dict = {
   'details.source': 'Страница источника',
   'details.place': 'Место',
   'details.close': 'Закрыть',
+  'back.again': 'Ещё раз «назад» — выход',
   'details.apply': 'Поставить на обои',
   'details.applying': 'Ставим…',
 

@@ -31,6 +31,16 @@ time with an alarm still pending changes nothing, so app starts and settings sav
 stays periodic (`KEEP`). The last daily attempt (queued / changed / retry / failed + message) and the next planned time are kept in
 SharedPreferences and shown on the Schedule screen (`scheduleStatus` plugin command). See OPEN-QUESTIONS Q28.
 
+### Back navigation (Android)
+
+The system back (button, gesture, predictive back; `enableOnBackInvokedCallback` in the manifest) is consumed by an
+`OnBackPressedCallback` that `WallpaperPlugin.load` registers. It calls `window.__dtwBack()` in the WebView via
+`evaluateJavascript`; the UI answers `"handled"` or `"exit"` and Kotlin calls `finish()` on anything but `"handled"` (so a
+page that is not ready never traps the user). The back stack lives in `src/lib/back.ts` (pure, tested): the topmost layer
+(`app.pushLayer`, used by `Sheet` and the subject edit mode) → sub-screen to its parent (Sources → Subject) → other tab to
+Today → on Today a toast "Swipe back again to exit" and exit only on a second press within 2 s. No WebView history is used.
+In a browser, Escape does the same. The error banner is not a layer.
+
 Split of responsibilities when setting a wallpaper:
 
 - **Rust**: network, candidate selection, scoring, crop plan, writing the final JPEG into the cache, metadata

@@ -87,6 +87,12 @@
     textInvalid = false;
   }
 
+  // While a saved subject is being edited, back cancels the edit.
+  $effect(() => {
+    if (!editingId) return;
+    return app.pushLayer(cancelEdit);
+  });
+
   function cancelEdit() {
     editingId = null;
     text = '';
