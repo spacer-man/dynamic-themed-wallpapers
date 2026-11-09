@@ -65,7 +65,8 @@ impl Source for PixabaySource<'_> {
         let q: String = label.chars().take(100).collect();
         let page = (req.seed % 3 + 1).to_string();
         let per_page = req.limit.clamp(3, 60).to_string();
-        let (min_w, min_h) = (req.screen_width.to_string(), req.screen_height.to_string());
+        let (min_w, min_h) = req.min_size();
+        let (min_w, min_h) = (min_w.to_string(), min_h.to_string());
         let url = build_url(
             API,
             &[

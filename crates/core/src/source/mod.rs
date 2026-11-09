@@ -252,14 +252,22 @@ impl Candidate {
                 "" | "Pinterest" => "Pinterest".to_owned(),
                 author => format!("Pin by {author} on Pinterest"),
             },
-            // Wallhaven's search API names neither author nor licence.
-            SourceKind::Wallhaven => format!(
-                "Wallpaper: Wallhaven #{}",
-                self.id.strip_prefix("wallhaven:").unwrap_or(&self.id)
-            ),
+            // Wallhaven's search API names neither author nor licence; the uploader is filled in
+            // by `Source::enrich_chosen` once the photo is chosen.
+            SourceKind::Wallhaven => match self.author.as_str() {
+                "" | "Wallhaven" => format!(
+                    "Wallpaper: Wallhaven #{}",
+                    self.id.strip_prefix("wallhaven:").unwrap_or(&self.id)
+                ),
+                author => format!("Wallhaven: {author}"),
+            },
         }
     }
 }
+
+/// With "allow upscaling" on, a photo whose best rendition is at least this fraction of the
+/// needed size is accepted (and upscaled when rendered). The single place for this threshold.
+pub const UPSCALE_MIN_FRACTION: f32 = 0.7;
 
 /// What the caller needs from candidates, before any image is downloaded.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -274,6 +282,8 @@ pub struct CandidateRequest {
     pub sub_places: Vec<SubPlace>,
     /// Varies which sub-places are sampled; rotate it between refills.
     pub seed: u64,
+    /// The user accepts photos smaller than the screen; see [`UPSCALE_MIN_FRACTION`].
+    pub allow_upscale: bool,
 }
 
 impl CandidateRequest {
@@ -284,7 +294,26 @@ impl CandidateRequest {
             limit: 60,
             sub_places: Vec::new(),
             seed: 0,
+            allow_upscale: false,
         }
+    }
+
+    /// Fraction of the screen size an image must reach: 1 normally, 0.7 when upscaling is allowed.
+    pub fn min_fraction(&self) -> f32 {
+        if self.allow_upscale {
+            UPSCALE_MIN_FRACTION
+        } else {
+            1.0
+        }
+    }
+
+    /// Smallest width/height to ask a source's API for (the screen, scaled by [`Self::min_fraction`]).
+    pub fn min_size(&self) -> (u32, u32) {
+        let f = self.min_fraction();
+        (
+            (self.screen_width as f32 * f).ceil() as u32,
+            (self.screen_height as f32 * f).ceil() as u32,
+        )
     }
 
     /// Which result page geographic searches should take (rotates with the seed).
@@ -292,10 +321,12 @@ impl CandidateRequest {
         (self.seed % 4) as u32
     }
 
-    /// The image covers the screen after cropping to its aspect ratio, without upscaling.
-    /// Used by the sources that search by key words (no fuzzy 20% allowance there).
+    /// The image covers the screen after cropping to its aspect ratio, without upscaling (or,
+    /// with `allow_upscale`, with at most ~1/0.7 of it). Used by the sources that search by key
+    /// words (no fuzzy 20% allowance there).
     pub fn covers_screen(&self, width: u32, height: u32) -> bool {
-        width >= self.screen_width && height >= self.screen_height
+        let (w, h) = self.min_size();
+        width >= w && height >= h
     }
 
     /// "portrait" for phones, "landscape" otherwise.
@@ -310,7 +341,12 @@ impl CandidateRequest {
     /// Smallest image height that can still fill the screen without visible upscaling.
     /// A little upscaling (≈ 20%) is invisible on a phone, so we allow it.
     pub fn min_image_height(&self) -> u32 {
-        (self.screen_height as f32 * 0.8) as u32
+        let f = if self.allow_upscale {
+            UPSCALE_MIN_FRACTION
+        } else {
+            0.8
+        };
+        (self.screen_height as f32 * f) as u32
     }
 }
 
@@ -326,6 +362,13 @@ pub trait Source: Send + Sync {
     /// URL of a version of the image at least `min_width` × `min_height` pixels, as small as
     /// possible. Falls back to the original.
     fn sized_url(&self, c: &Candidate, min_width: u32, min_height: u32) -> String;
+
+    /// Called when a candidate is about to become the wallpaper: fetch details that are too
+    /// costly to get for every candidate (Wallhaven's uploader) and return the improved
+    /// candidate, or `None` to keep it as it is. The caller ignores errors.
+    fn enrich_chosen(&self, _c: &Candidate) -> Result<Option<Candidate>> {
+        Ok(None)
+    }
 
     /// Called once when a candidate actually becomes the wallpaper. Unsplash's API terms
     /// require pinging their download endpoint; other sources do nothing.
@@ -360,6 +403,19 @@ pub fn dedup(candidates: &mut Vec<Candidate>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn covers_screen_strict_and_upscaled() {
+        let mut req = CandidateRequest::new(1000, 2000);
+        assert!(req.covers_screen(1000, 2000));
+        assert!(!req.covers_screen(800, 1600));
+        assert_eq!(req.min_image_height(), 1600);
+        req.allow_upscale = true;
+        assert!(req.covers_screen(700, 1400));
+        assert!(!req.covers_screen(690, 1400));
+        assert_eq!(req.min_size(), (700, 1400));
+        assert_eq!(req.min_image_height(), 1400);
+    }
 
     #[test]
     fn interleave_round_robin() {

@@ -103,6 +103,7 @@ pub fn evaluate(
     screen: Screen,
     tone: ToneFilter,
     recent_hashes: &[u64],
+    allow_upscale: bool,
 ) -> Vec<Evaluated> {
     analysed
         .into_iter()
@@ -114,6 +115,7 @@ pub fn evaluate(
                 screen.as_tuple(),
                 tone,
                 recent_hashes,
+                allow_upscale,
             )
             .map(|()| model.predict(&features));
             Evaluated {

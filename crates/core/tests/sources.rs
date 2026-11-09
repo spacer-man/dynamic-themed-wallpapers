@@ -358,6 +358,54 @@ fn openverse_place_uses_the_label_as_query() {
 }
 
 #[test]
+fn wallhaven_chosen_photo_gets_uploader_and_source_link() {
+    let http = FixtureHttp::new()
+        .route(
+            &["wallhaven.cc/api/v1/search"],
+            fixture("wallhaven/search_fog.json"),
+        )
+        .route(
+            &["wallhaven.cc/api/v1/w/abc123"],
+            fixture("wallhaven/wallpaper_abc123.json"),
+        );
+    let src = WallhavenSource::new(&http);
+    let got = src.candidates(&Search::Query("fog"), &phone()).unwrap();
+    let c = src.enrich_chosen(&got[0]).unwrap().expect("enriched");
+    assert_eq!(c.author, "fogwalker");
+    assert_eq!(
+        c.author_url.as_deref(),
+        Some("https://wallhaven.cc/user/fogwalker")
+    );
+    assert_eq!(c.page_url, "https://example.org/original-art");
+    assert_eq!(c.credit_line(), "Wallhaven: fogwalker");
+    assert_eq!(c.license.short_name, "No licence stated");
+    assert!(http.requests()[1].ends_with("/api/v1/w/abc123"));
+
+    // A failing request is an error the caller ignores; the candidate is untouched.
+    let down = FixtureHttp::new();
+    assert!(WallhavenSource::new(&down).enrich_chosen(&got[0]).is_err());
+    assert_eq!(got[0].credit_line(), "Wallpaper: Wallhaven #abc123");
+}
+
+#[test]
+fn allow_upscale_relaxes_the_size_filter_in_one_place() {
+    // Wallhaven fixture: only the 1440x3040 wallpaper covers a 1080x2400 phone; the others are
+    // 1200x2000 and smaller.
+    let http = FixtureHttp::new().route(
+        &["wallhaven.cc/api/v1/search"],
+        fixture("wallhaven/search_fog.json"),
+    );
+    let src = WallhavenSource::new(&http);
+    let strict = src.candidates(&Search::Query("fog"), &phone()).unwrap();
+    let mut req = phone();
+    req.allow_upscale = true;
+    let relaxed = src.candidates(&Search::Query("fog"), &req).unwrap();
+    assert!(relaxed.len() > strict.len(), "{relaxed:?}");
+    // The API is asked for the relaxed minimum too (70% of 1080x2400).
+    assert!(percent_decode(&http.requests()[1]).contains("atleast=756x1680"));
+}
+
+#[test]
 fn wallhaven_is_sfw_general_only_and_filters_by_size() {
     let http = FixtureHttp::new().route(
         &["wallhaven.cc/api/v1/search"],

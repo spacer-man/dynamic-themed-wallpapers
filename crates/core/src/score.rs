@@ -50,6 +50,16 @@ pub const MAX_SHADOW_CLIP: f32 = 0.60;
 /// The photo may be upscaled by at most this factor to cover the screen.
 pub const MAX_UPSCALE: f32 = 1.25;
 
+/// The most the photo may be upscaled: [`MAX_UPSCALE`], or the inverse of the upscale
+/// fraction when the user allows smaller photos.
+pub fn max_upscale(allow_upscale: bool) -> f32 {
+    if allow_upscale {
+        MAX_UPSCALE.max(1.0 / crate::source::UPSCALE_MIN_FRACTION)
+    } else {
+        MAX_UPSCALE
+    }
+}
+
 /// `recent_hashes`: dHashes of photos shown recently.
 pub fn check(
     c: &Candidate,
@@ -57,6 +67,7 @@ pub fn check(
     screen: (u32, u32),
     tone: ToneFilter,
     recent_hashes: &[u64],
+    allow_upscale: bool,
 ) -> Result<(), Reject> {
     if !tone.accepts(a.tone) {
         return Err(Reject::WrongTone);
@@ -64,7 +75,8 @@ pub fn check(
     // Pixels of the original that end up on screen, along each axis.
     let crop_w = c.width as f32 * a.crop.w;
     let crop_h = c.height as f32 * a.crop.h;
-    if crop_w * MAX_UPSCALE < screen.0 as f32 || crop_h * MAX_UPSCALE < screen.1 as f32 {
+    let up = max_upscale(allow_upscale);
+    if crop_w * up < screen.0 as f32 || crop_h * up < screen.1 as f32 {
         return Err(Reject::TooSmall);
     }
     if a.crop_keep < MIN_CROP_KEEP {
@@ -283,13 +295,20 @@ mod tests {
     fn rejects() {
         let c = candidate(6000, 4000);
         let a = analysis();
-        assert_eq!(check(&c, &a, SCREEN, ToneFilter::Dark, &[]), Ok(()));
+        assert_eq!(check(&c, &a, SCREEN, ToneFilter::Dark, &[], false), Ok(()));
         assert_eq!(
-            check(&c, &a, SCREEN, ToneFilter::Light, &[]),
+            check(&c, &a, SCREEN, ToneFilter::Light, &[], false),
             Err(Reject::WrongTone)
         );
         assert_eq!(
-            check(&candidate(3000, 1800), &a, SCREEN, ToneFilter::Any, &[]),
+            check(
+                &candidate(3000, 1800),
+                &a,
+                SCREEN,
+                ToneFilter::Any,
+                &[],
+                false
+            ),
             Err(Reject::TooSmall)
         );
         let blurry = Analysis {
@@ -297,7 +316,7 @@ mod tests {
             ..analysis()
         };
         assert_eq!(
-            check(&c, &blurry, SCREEN, ToneFilter::Any, &[]),
+            check(&c, &blurry, SCREEN, ToneFilter::Any, &[], false),
             Err(Reject::Blurry)
         );
         let pano = Analysis {
@@ -305,7 +324,7 @@ mod tests {
             ..analysis()
         };
         assert_eq!(
-            check(&c, &pano, SCREEN, ToneFilter::Any, &[]),
+            check(&c, &pano, SCREEN, ToneFilter::Any, &[], false),
             Err(Reject::ExcessiveCrop)
         );
         let blown = Analysis {
@@ -313,12 +332,12 @@ mod tests {
             ..analysis()
         };
         assert_eq!(
-            check(&c, &blown, SCREEN, ToneFilter::Any, &[]),
+            check(&c, &blown, SCREEN, ToneFilter::Any, &[], false),
             Err(Reject::BlownHighlights)
         );
         let near = a.dhash ^ 0b111; // 3 bits off
         assert_eq!(
-            check(&c, &a, SCREEN, ToneFilter::Any, &[near]),
+            check(&c, &a, SCREEN, ToneFilter::Any, &[near], false),
             Err(Reject::Duplicate)
         );
     }

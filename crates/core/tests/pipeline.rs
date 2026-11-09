@@ -88,7 +88,14 @@ fn tone_filter_never_lets_the_wrong_tone_through() {
         (ToneFilter::Dark, ["light1", "light2"], ["dark1", "dark2"]),
         (ToneFilter::Light, ["dark1", "dark2"], ["light1", "light2"]),
     ] {
-        let ev = pipeline::evaluate(analysed.clone(), &Model::default(), SCREEN, filter, &[]);
+        let ev = pipeline::evaluate(
+            analysed.clone(),
+            &Model::default(),
+            SCREEN,
+            filter,
+            &[],
+            false,
+        );
         for e in &ev {
             let id = e.candidate.id.as_str();
             if wrong.contains(&id) {
@@ -117,7 +124,14 @@ fn curated_photo_wins_when_everything_else_is_equal() {
         candidate("featured", "https://x/b.jpg", true),
     ];
     let (analysed, _) = pipeline::analyse_all(&http, cands, SCREEN, 1);
-    let ev = pipeline::evaluate(analysed, &Model::default(), SCREEN, ToneFilter::Any, &[]);
+    let ev = pipeline::evaluate(
+        analysed,
+        &Model::default(),
+        SCREEN,
+        ToneFilter::Any,
+        &[],
+        false,
+    );
     let mut rng = fastrand::Rng::with_seed(1);
     let i = pipeline::choose(&ev, 0.0, &mut rng).unwrap();
     assert_eq!(ev[i].candidate.id, "featured");
@@ -139,6 +153,7 @@ fn duplicates_of_recent_wallpapers_are_rejected() {
         SCREEN,
         ToneFilter::Any,
         &[hash],
+        false,
     );
     assert_eq!(ev[0].verdict, Err(Reject::Duplicate));
 }
@@ -168,9 +183,43 @@ fn render_produces_a_screen_sized_jpeg() {
     let mut c = candidate("c", "https://thumb.example/a/960px-prev.jpg", true);
     c.image_url = "https://upload.example/prev.jpg".into();
     let (analysed, _) = pipeline::analyse_all(&http, vec![c], SCREEN, 1);
-    let ev = pipeline::evaluate(analysed, &Model::default(), SCREEN, ToneFilter::Any, &[]);
+    let ev = pipeline::evaluate(
+        analysed,
+        &Model::default(),
+        SCREEN,
+        ToneFilter::Any,
+        &[],
+        false,
+    );
     let src = CommonsSource::new(&http);
     let jpeg = pipeline::render(&http, &src, &ev[0], SCREEN).unwrap();
     let out = pipeline::decode(&jpeg).unwrap();
     assert_eq!((out.width(), out.height()), (540, 1200));
+}
+
+#[test]
+fn upscaled_photos_are_accepted_only_when_allowed() {
+    // 1.35x too small: above the 1.25 limit, within the 1/0.7 limit.
+    let http = FixtureHttp::new().route(&["small.jpg"], photo(400, 889, 60, 3));
+    let analysed = pipeline::analyse_all(
+        &http,
+        vec![candidate("s", "https://x/small.jpg", true)],
+        SCREEN,
+        1,
+    )
+    .0;
+    let mut c = analysed;
+    c[0].0.width = 400;
+    c[0].0.height = 889;
+    let strict = pipeline::evaluate(
+        c.clone(),
+        &Model::default(),
+        SCREEN,
+        ToneFilter::Any,
+        &[],
+        false,
+    );
+    assert_eq!(strict[0].verdict, Err(Reject::TooSmall));
+    let relaxed = pipeline::evaluate(c, &Model::default(), SCREEN, ToneFilter::Any, &[], true);
+    assert_ne!(relaxed[0].verdict, Err(Reject::TooSmall));
 }

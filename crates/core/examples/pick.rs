@@ -152,7 +152,14 @@ fn run(args: &Args) -> Result<(), Box<dyn std::error::Error>> {
     for (id, e) in &failed {
         eprintln!("skipped {id}: {e}");
     }
-    let evaluated = pipeline::evaluate(analysed, &Model::default(), args.screen, args.tone, &[]);
+    let evaluated = pipeline::evaluate(
+        analysed,
+        &Model::default(),
+        args.screen,
+        args.tone,
+        &[],
+        false,
+    );
 
     for e in &evaluated {
         let a = &e.analysis;
