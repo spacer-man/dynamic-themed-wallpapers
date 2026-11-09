@@ -2,16 +2,19 @@
 //! `purity` and `categories` parameters are constants on purpose, not settings.
 //!
 //! The search API names neither author nor licence (the uploader is only in the per-wallpaper
-//! endpoint), so captions credit Wallhaven itself and say that no licence is stated. Likes on
-//! Wallhaven (favourites) feed the curation score.
+//! endpoint), so candidates credit Wallhaven itself and say that no licence is stated. Only
+//! the photo that becomes the wallpaper costs one extra request ([`Source::enrich_chosen`]) to
+//! learn its uploader and source link. Likes on Wallhaven (favourites) feed the curation score.
 
 use serde::Deserialize;
 
 use super::{Candidate, CandidateRequest, Curation, License, Search, Source, SourceKind};
 use crate::error::{Error, Result};
 use crate::http::{build_url, HttpClient, MAX_JSON_BYTES};
+use crate::text::truncate;
 
 const API: &str = "https://wallhaven.cc/api/v1/search";
+const DETAIL_API: &str = "https://wallhaven.cc/api/v1/w";
 /// 100 = General only (no Anime, no People).
 const CATEGORIES: &str = "100";
 /// 100 = SFW only. Never configurable.
@@ -34,7 +37,8 @@ impl Source for WallhavenSource<'_> {
 
     fn candidates(&self, search: &Search<'_>, req: &CandidateRequest) -> Result<Vec<Candidate>> {
         let label = search.text();
-        let atleast = format!("{}x{}", req.screen_width, req.screen_height);
+        let (min_w, min_h) = req.min_size();
+        let atleast = format!("{min_w}x{min_h}");
         // With `sorting=random` the seed keeps pages consistent; a new seed is a new shuffle.
         let seed = format!("{:06x}", req.seed & 0xff_ffff);
         let url = build_url(
@@ -73,6 +77,68 @@ impl Source for WallhavenSource<'_> {
     fn sized_url(&self, c: &Candidate, _min_width: u32, _min_height: u32) -> String {
         c.image_url.clone()
     }
+
+    fn enrich_chosen(&self, c: &Candidate) -> Result<Option<Candidate>> {
+        let id = c.id.strip_prefix("wallhaven:").unwrap_or(&c.id);
+        let url = build_url(&format!("{DETAIL_API}/{id}"), &[]);
+        let body = self.http.get(&url, MAX_JSON_BYTES)?;
+        let detail: DetailResponse =
+            serde_json::from_slice(&body).map_err(|e| Error::parse("wallhaven wallpaper", e))?;
+        let mut out = c.clone();
+        let mut changed = false;
+        if let Some(name) = detail
+            .data
+            .uploader
+            .map(|u| u.username.trim().to_owned())
+            .filter(|n| !n.is_empty())
+        {
+            out.author_url = Some(format!(
+                "https://wallhaven.cc/user/{}",
+                encode_segment(&name)
+            ));
+            out.author = truncate(&name, 80);
+            changed = true;
+        }
+        if let Some(src) = detail
+            .data
+            .source
+            .map(|s| s.trim().to_owned())
+            .filter(|s| s.starts_with("https://") || s.starts_with("http://"))
+        {
+            out.page_url = src;
+            changed = true;
+        }
+        Ok(changed.then_some(out))
+    }
+}
+
+#[derive(Deserialize)]
+struct DetailResponse {
+    data: Detail,
+}
+
+#[derive(Deserialize)]
+struct Detail {
+    uploader: Option<Uploader>,
+    source: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct Uploader {
+    #[serde(default)]
+    username: String,
+}
+
+/// Percent-encode everything but unreserved characters (user names are plain, but be safe).
+fn encode_segment(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'0'..=b'9' | b'a'..=b'z' | b'A'..=b'Z' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
 }
 
 #[derive(Deserialize)]

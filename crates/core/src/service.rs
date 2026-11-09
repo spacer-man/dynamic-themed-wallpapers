@@ -88,6 +88,8 @@ pub struct Settings {
     /// See [`CaptionLayout::y`]. Lets the user keep the text clear of home screen icons.
     pub caption_y: u8,
     pub caption_align: CaptionAlign,
+    /// Accept photos smaller than the screen (down to ~70%) and upscale them. Old files read as off.
+    pub allow_upscale: bool,
 }
 
 impl Default for Settings {
@@ -105,6 +107,7 @@ impl Default for Settings {
             caption_enabled: true,
             caption_y: DEFAULT_CAPTION_Y,
             caption_align: CaptionAlign::Left,
+            allow_upscale: false,
         }
     }
 }
@@ -755,6 +758,7 @@ impl Engine {
 
         let mut req = CandidateRequest::new(screen.width, screen.height);
         req.limit = 30;
+        req.allow_upscale = settings.allow_upscale;
         // Only Commons uses the sub-places (country-sized places).
         if let (SubjectSpec::Place { place }, Some(Scope::Hierarchy), SourceKind::Commons) =
             (&subject.spec, &scope, kind)
@@ -799,7 +803,14 @@ impl Engine {
             let (analysed, failed) =
                 pipeline::analyse_all(self.http.as_ref(), candidates, screen, ANALYSIS_THREADS);
             report.failed_downloads += failed.len() as u32;
-            let mut evaluated = pipeline::evaluate(analysed, &model, screen, tone, &recent);
+            let mut evaluated = pipeline::evaluate(
+                analysed,
+                &model,
+                screen,
+                tone,
+                &recent,
+                settings.allow_upscale,
+            );
             for e in &evaluated {
                 if let Err(r) = e.verdict {
                     report.reject(r);
@@ -945,6 +956,16 @@ impl Engine {
         path: PathBuf,
         now: i64,
     ) -> Result<Shown> {
+        // Wallhaven names the uploader only per wallpaper: ask for it now, for the chosen photo
+        // alone. Best effort; on failure the plain caption stays.
+        let enriched = if candidate.source == SourceKind::Wallhaven {
+            self.source(store, SourceKind::Wallhaven)
+                .ok()
+                .and_then(|w| w.enrich_chosen(candidate).ok().flatten())
+        } else {
+            None
+        };
+        let candidate = enriched.as_ref().unwrap_or(candidate);
         store.record_shown(candidate, features, palette, dhash, now)?;
         let entry = store
             .current()?
@@ -1078,6 +1099,13 @@ mod tests {
         assert_eq!(parse_hhmm("24:00"), None);
         assert_eq!(parse_hhmm("8:05"), None);
         assert_eq!(parse_hhmm("nope"), None);
+    }
+
+    #[test]
+    fn old_settings_read_with_upscaling_off() {
+        let s: Settings = serde_json::from_str(r#"{"lang":"ru","wifi_only":false}"#).unwrap();
+        assert!(!s.allow_upscale);
+        assert!(!Settings::default().allow_upscale);
     }
 
     #[test]

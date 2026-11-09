@@ -1,0 +1,17 @@
+{
+  "data": {
+    "id": "abc123",
+    "url": "https://wallhaven.cc/w/abc123",
+    "source": "https://example.org/original-art",
+    "uploader": {
+      "username": "fogwalker",
+      "group": "User",
+      "avatar": {"200px": "https://wallhaven.cc/images/user/avatar/200/x.png"}
+    },
+    "purity": "sfw",
+    "category": "general",
+    "dimension_x": 1440,
+    "dimension_y": 3040,
+    "path": "https://w.wallhaven.cc/full/ab/wallhaven-abc123.jpg"
+  }
+}
