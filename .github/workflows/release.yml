@@ -1,10 +1,17 @@
 name: Release
 
-# Push a tag such as v0.1.0 to build a signed APK and publish it as a GitHub release.
-# The signing key lives only in repository secrets; see docs/releasing.md.
+# Push a tag such as v0.1.0, or publish a release with a new tag on GitHub, to build a signed APK and
+# attach it to that release. The signing key lives only in repository secrets; see docs/releasing.md.
 on:
   push:
     tags: ["v*"]
+  release:
+    types: [published]
+
+# Publishing a release on the website also pushes its tag, so both events can fire: keep one run.
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -76,5 +83,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$GITHUB_REF_NAME" "$APK" "$APK.sha256" \
-            --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            # Created on the website: add the files to it.
+            gh release upload "$GITHUB_REF_NAME" "$APK" "$APK.sha256" --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" "$APK" "$APK.sha256" \
+              --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+          fi
