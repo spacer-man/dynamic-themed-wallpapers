@@ -127,6 +127,7 @@ const DEFAULT_SETTINGS: Settings = {
   follow_system_theme: false,
   radius_km: null,
   change_time: '08:00',
+  schedule_enabled: true,
   wifi_only: true,
   cache_mb: 150,
   source: 'commons',

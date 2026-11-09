@@ -40,6 +40,7 @@ object Scheduler {
     private const val PREFS = "schedule"
     private const val K_TIME = "time"
     private const val K_WIFI = "wifi_only"
+    private const val K_ENABLED = "enabled"
     private const val K_NEXT = "next_at"
     private const val K_LAST_AT = "last_at"
     private const val K_LAST_OUTCOME = "last_outcome"
@@ -55,12 +56,17 @@ object Scheduler {
      * Idempotent: with the same time and network setting and an alarm already pending, nothing moves,
      * so calling it at every app start and settings save never shifts the next run.
      */
-    fun schedule(context: Context, time: String, wifiOnly: Boolean) {
+    fun schedule(context: Context, time: String, wifiOnly: Boolean, enabled: Boolean = true) {
         val p = prefs(context)
         val wm = WorkManager.getInstance(context)
         if (!p.getBoolean(K_MIGRATED, false)) {
             wm.cancelUniqueWork(OLD_DAILY)
             p.edit().putBoolean(K_MIGRATED, true).apply()
+        }
+        p.edit().putBoolean(K_ENABLED, enabled).apply()
+        if (!enabled) {
+            cancelAll(context)
+            return
         }
         val sameTime = p.getString(K_TIME, null) == time
         val sameWifi = p.getBoolean(K_WIFI, true) == wifiOnly
@@ -83,6 +89,28 @@ object Scheduler {
         wm.enqueueUniquePeriodicWork(PREFETCH, policy, prefetch)
     }
 
+    /** Switched off: no alarm, no pending daily / one-time change, no prefetch. */
+    private fun cancelAll(context: Context) {
+        val alarms = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val pending = PendingIntent.getBroadcast(
+            context,
+            ALARM_REQUEST,
+            alarmIntent(context),
+            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
+        )
+        if (pending != null) {
+            alarms.cancel(pending)
+            pending.cancel()
+        }
+        val wm = WorkManager.getInstance(context)
+        wm.cancelUniqueWork(DAILY_NOW)
+        wm.cancelUniqueWork(ONE_TIME)
+        wm.cancelUniqueWork(PREFETCH)
+        prefs(context).edit().putLong(K_NEXT, 0).apply()
+    }
+
+    private fun enabled(context: Context) = prefs(context).getBoolean(K_ENABLED, true)
+
     private fun alarmIntent(context: Context) =
         Intent(context, DailyAlarmReceiver::class.java).setAction(ACTION_DAILY)
 
@@ -99,6 +127,7 @@ object Scheduler {
      * schedule was ever saved. Replaces a pending alarm.
      */
     fun armNext(context: Context, afterMs: Long = 0) {
+        if (!enabled(context)) return
         val time = prefs(context).getString(K_TIME, null) ?: return
         val now = Calendar.getInstance().apply { timeInMillis += afterMs }
         val triggerAt = now.timeInMillis + delayUntil(time, now)
@@ -122,6 +151,7 @@ object Scheduler {
 
     /** The daily change itself: an expedited one-time job (plain one if the quota is used up). */
     fun enqueueDaily(context: Context) {
+        if (!enabled(context)) return
         val wifiOnly = prefs(context).getBoolean(K_WIFI, true)
         val network = if (wifiOnly) NetworkType.UNMETERED else NetworkType.CONNECTED
         val request = OneTimeWorkRequestBuilder<DailyWallpaperWorker>()

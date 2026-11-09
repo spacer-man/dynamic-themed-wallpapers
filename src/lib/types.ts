@@ -14,6 +14,8 @@ export interface Settings {
   radius_km: number | null;
   /** "HH:MM", local time. */
   change_time: string;
+  /** The automatic daily change runs at all. */
+  schedule_enabled: boolean;
   wifi_only: boolean;
   cache_mb: number;
   /** The single source photos come from (sources are never mixed). */

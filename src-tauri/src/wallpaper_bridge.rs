@@ -51,21 +51,25 @@ impl Bridge {
         Ok(())
     }
 
-    /// Arm the daily alarm and the prefetch job. Idempotent: with an unchanged time and network
+    /// Arm the daily alarm (or, with `enabled` false, cancel it and the prefetch job) and the prefetch job. Idempotent: with an unchanged time and network
     /// rule and an alarm already pending, the next run does not move.
     #[cfg(target_os = "android")]
-    pub fn schedule(&self, time: &str, wifi_only: bool) -> Result<(), Error> {
+    pub fn schedule(&self, time: &str, wifi_only: bool, enabled: bool) -> Result<(), Error> {
         self.0
             .run_mobile_plugin::<serde_json::Value>(
                 "scheduleDaily",
-                ScheduleArgs { time, wifi_only },
+                ScheduleArgs {
+                    time,
+                    wifi_only,
+                    enabled,
+                },
             )
             .map(|_| ())
             .map_err(|e| Error::Config(format!("scheduling failed: {e}")))
     }
 
     #[cfg(not(target_os = "android"))]
-    pub fn schedule(&self, _time: &str, _wifi_only: bool) -> Result<(), Error> {
+    pub fn schedule(&self, _time: &str, _wifi_only: bool, _enabled: bool) -> Result<(), Error> {
         Ok(())
     }
 
@@ -178,6 +182,7 @@ struct EnabledReply {
 struct ScheduleArgs<'a> {
     time: &'a str,
     wifi_only: bool,
+    enabled: bool,
 }
 
 pub fn plugin() -> TauriPlugin<tauri::Wry> {

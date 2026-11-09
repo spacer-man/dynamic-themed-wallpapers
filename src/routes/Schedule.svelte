@@ -15,7 +15,8 @@
   const info = $derived(status ? describeSchedule(status, Date.now()) : null);
 
   $effect(() => {
-    void s?.change_time; // look again after the time is changed
+    void s?.change_time; // look again after the schedule is changed
+    void s?.schedule_enabled;
     api
       .scheduleStatus()
       .then((v) => (status = v))
@@ -46,6 +47,13 @@
 
   {#if s}
     <div class="card">
+      <Toggle
+        checked={s.schedule_enabled}
+        label={t('schedule.enabled')}
+        hint={t('schedule.enabled.hint')}
+        onchange={(v) => app.saveSettings({ schedule_enabled: v })}
+      />
+      <div class="rows" class:off={!s.schedule_enabled} inert={!s.schedule_enabled}>
       <label class="row">
         <span class="label">{t('schedule.time')}</span>
         <input
@@ -74,6 +82,7 @@
           <span class="hint">{t(info.overdue ? 'schedule.status.overdue' : 'schedule.status.next', { when: when(info.next) })}</span>
         {/if}
       {/if}
+      </div>
       {#if app.notifications}
         <span class="hint">{t('schedule.notify.on')}</span>
       {:else}
@@ -127,6 +136,16 @@
     justify-content: space-between;
     gap: var(--space-3);
     min-height: 44px;
+  }
+
+  .rows {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+  }
+
+  .rows.off {
+    opacity: 0.45;
   }
 
   .stack {

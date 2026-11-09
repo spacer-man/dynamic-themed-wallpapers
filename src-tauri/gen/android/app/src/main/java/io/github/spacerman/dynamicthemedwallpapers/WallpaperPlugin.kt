@@ -27,6 +27,7 @@ class SetWallpaperArgs {
 class ScheduleArgs {
     lateinit var time: String
     var wifiOnly: Boolean = true
+    var enabled: Boolean = true
 }
 
 /** Thin Tauri wrapper; the work is in [WallpaperSetter] so the background worker can share it. */
@@ -52,7 +53,7 @@ class WallpaperPlugin(private val activity: Activity) : Plugin(activity) {
     fun scheduleDaily(invoke: Invoke) {
         try {
             val args = invoke.parseArgs(ScheduleArgs::class.java)
-            Scheduler.schedule(activity, args.time, args.wifiOnly)
+            Scheduler.schedule(activity, args.time, args.wifiOnly, args.enabled)
             invoke.resolve()
         } catch (e: Exception) {
             invoke.reject(e.message ?: e.javaClass.simpleName)

@@ -168,11 +168,13 @@ are offered). At most three. "Retry later" queues one more change in an hour. A 
 actual change runs in the same worker (`change:<source id>`). Text is English or Russian by the language setting (`auto` uses
 the device language); the channel has low importance (no sound); the icon is a system drawable.
 
-## Q24. Notification permission has no "enable schedule" moment
+## Q24. Notification permission and an on/off switch for the schedule
 
-There is no on/off switch for the schedule (it is always on). **Applied:** the permission dialog is requested when the user
-changes the schedule time, and the Schedule screen shows a button while notifications are off. The call returns immediately
-(the dialog's answer is read again a few seconds later); nothing is requested at app start.
+**Resolved with the owner:** the schedule gets a switch `schedule_enabled` (default on; old settings files read as on). Off cancels
+the daily alarm, any pending daily / one-time change and the prefetch job; on arms them again. The Android permission dialog is
+requested when the switch is turned on (no longer when the time changes); the Schedule screen still shows the "Allow notifications"
+button while notifications are off. The call returns immediately (the dialog's answer is read again a few seconds later); nothing is
+requested at app start. When off, the time, Wi-Fi and status rows are dimmed and inert.
 
 ## Q25. Opening the app on the Sources screen
 

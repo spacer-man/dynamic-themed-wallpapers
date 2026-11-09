@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { describeSchedule, OVERDUE_MS } from './schedule-status';
 import { missingKeys } from './dict';
+import { mockCall, resetMock } from './mock';
 
 const NOW = 1_800_000_000_000;
 
@@ -32,5 +33,15 @@ describe('describeSchedule', () => {
 
   test('every outcome has text in both languages', () => {
     expect(missingKeys()).toEqual({ en: [], ru: [] });
+  });
+});
+
+describe('schedule switch in the mock backend', () => {
+  test('is on by default and can be turned off and saved', async () => {
+    resetMock();
+    const s = (await mockCall('get_settings', {})) as Record<string, unknown>;
+    expect(s.schedule_enabled).toBe(true);
+    const saved = (await mockCall('save_settings', { settings: { ...s, schedule_enabled: false } })) as Record<string, unknown>;
+    expect(saved.schedule_enabled).toBe(false);
   });
 });
