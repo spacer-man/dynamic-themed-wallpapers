@@ -2,7 +2,11 @@ package io.github.spacerman.dynamicthemedwallpapers
 
 import android.Manifest
 import android.app.Activity
+import android.content.ComponentName
+import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
@@ -49,6 +53,45 @@ class WallpaperPlugin(private val activity: Activity) : Plugin(activity) {
         try {
             val args = invoke.parseArgs(ScheduleArgs::class.java)
             Scheduler.schedule(activity, args.time, args.wifiOnly)
+            invoke.resolve()
+        } catch (e: Exception) {
+            invoke.reject(e.message ?: e.javaClass.simpleName)
+        }
+    }
+
+    /** What the last daily run did and when the next one is planned (epoch milliseconds, 0 = never). */
+    @Command
+    fun scheduleStatus(invoke: Invoke) {
+        val st = Scheduler.status(activity)
+        val out = JSObject()
+        out.put("lastAt", st.lastAt)
+        out.put("outcome", st.outcome)
+        out.put("message", st.message)
+        out.put("nextAt", st.nextAt)
+        invoke.resolve(out)
+    }
+
+    /**
+     * Opens the screen where the user can allow autostart / remove battery limits: on Xiaomi the MIUI
+     * autostart list if it exists, otherwise the app's details page (present on every device).
+     */
+    @Command
+    fun openBatterySettings(invoke: Invoke) {
+        try {
+            val miui = Intent()
+                .setComponent(
+                    ComponentName(
+                        "com.miui.securitycenter",
+                        "com.miui.permcenter.autostart.AutoStartManagementActivity",
+                    ),
+                )
+            val opened = Build.MANUFACTURER.equals("xiaomi", ignoreCase = true) &&
+                runCatching { activity.startActivity(miui) }.isSuccess
+            if (!opened) {
+                activity.startActivity(
+                    Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", activity.packageName, null)),
+                )
+            }
             invoke.resolve()
         } catch (e: Exception) {
             invoke.reject(e.message ?: e.javaClass.simpleName)

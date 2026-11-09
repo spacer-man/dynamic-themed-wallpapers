@@ -34,6 +34,10 @@
 # Notification buttons: instantiated by Android from the class name in the manifest.
 -keep class io.github.spacerman.dynamicthemedwallpapers.FallbackReceiver { <init>(...); }
 
+# Daily alarm and boot / clock-change receivers: instantiated by Android from the manifest.
+-keep class io.github.spacerman.dynamicthemedwallpapers.DailyAlarmReceiver { <init>(...); }
+-keep class io.github.spacerman.dynamicthemedwallpapers.BootReceiver { <init>(...); }
+
 # Activity named in the manifest, and the Tauri/wry runtime (also covered by the generated proguard-tauri.pro).
 -keep class io.github.spacerman.dynamicthemedwallpapers.MainActivity { *; }
 -keep class app.tauri.** { *; }
