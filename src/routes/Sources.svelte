@@ -4,6 +4,7 @@
   import { SOURCES } from '../lib/sources';
   import type { SourceId, SourceStatus } from '../lib/types';
   import StatusChip from '../lib/components/StatusChip.svelte';
+  import Toggle from '../lib/components/Toggle.svelte';
 
   // What the user typed per source. Never kept longer than needed and never shown again.
   let drafts = $state<Partial<Record<SourceId, string>>>({});
@@ -45,6 +46,17 @@
   <p class="hint">{t('sources.intro')}</p>
   {#if app.activeSubject?.kind === 'board'}
     <p class="hint">{t('sources.locked.board')}</p>
+  {/if}
+
+  {#if app.settings}
+    <div class="card">
+      <Toggle
+        checked={app.settings.allow_upscale}
+        label={t('sources.upscale')}
+        hint={t('sources.upscale.hint')}
+        onchange={(v) => app.saveSettings({ allow_upscale: v })}
+      />
+    </div>
   {/if}
 
   {#each SOURCES as info (info.id)}

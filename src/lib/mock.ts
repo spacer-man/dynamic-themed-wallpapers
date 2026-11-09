@@ -135,6 +135,7 @@ const DEFAULT_SETTINGS: Settings = {
   caption_enabled: true,
   caption_y: 94,
   caption_align: 'left',
+  allow_upscale: false,
 };
 
 const KEY = 'dtw-mock-db';
