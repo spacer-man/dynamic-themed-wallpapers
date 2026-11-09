@@ -56,8 +56,9 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-Or, without a terminal (e.g. from a phone): Releases → Draft a new release → choose a new tag `vX.Y.Z` on `main` →
-Generate release notes → Publish.
+Or, without a terminal (e.g. from a phone): Actions → Release → Run workflow on `main`. The tag is `v` + the version in
+`tauri.conf.json`; the run creates it together with the release. Publishing a release with a new tag on the website
+works too, but the mobile site did not submit that form in practice.
 
 The workflow builds, verifies the signature and attaches the APK and its SHA-256 file. A tag pushed from a terminal gets
 a release with notes generated from the commits; a release published on the website keeps its own notes.
