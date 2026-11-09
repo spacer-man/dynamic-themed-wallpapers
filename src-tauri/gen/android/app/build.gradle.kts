@@ -52,8 +52,12 @@ android {
         }
         getByName("release") {
             signingConfigs.findByName("release")?.let { signingConfig = it }
+            // R8 is off: Tauri, wry and our plugin reach Kotlin classes by name from Rust and by
+            // reflection, and the release APK crashed at launch twice with it on (v0.1.0, v0.2.0), even
+            // with keep rules. The APK is mostly the native library, so shrinking Kotlin saves little.
+            // proguard-rules.pro is kept for the day it is turned back on.
             optimization {
-               enable = true
+               enable = false
             }
             proguardFiles(
                 *fileTree(".") {
