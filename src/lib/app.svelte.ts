@@ -229,8 +229,8 @@ class App {
     try {
       this.settings = await api.saveSettings(this.settings);
       if (patch.lang) i18n.choice = this.settings.lang;
-      // Setting up the schedule is the moment to ask for the notification permission.
-      if (patch.change_time) void this.askNotifications();
+      // Turning the schedule on is the moment to ask for the notification permission.
+      if (patch.schedule_enabled) void this.askNotifications();
     } catch (e) {
       this.settings = before;
       this.fail(e);

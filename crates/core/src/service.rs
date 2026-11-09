@@ -75,6 +75,8 @@ pub struct Settings {
     pub radius_km: Option<f64>,
     /// Local time of the daily change, "HH:MM".
     pub change_time: String,
+    /// The automatic daily change (and the prefetch job) runs at all. Old settings files read as on.
+    pub schedule_enabled: bool,
     pub wifi_only: bool,
     pub cache_mb: u32,
     /// The source photos come from. The user picks it; sources are never mixed.
@@ -95,6 +97,7 @@ impl Default for Settings {
             follow_system_theme: false,
             radius_km: None,
             change_time: "08:00".into(),
+            schedule_enabled: true,
             wifi_only: true,
             cache_mb: (DEFAULT_CACHE_BUDGET_BYTES / 1024 / 1024) as u32,
             source: SourceKind::Commons,
@@ -1123,5 +1126,9 @@ mod tests {
         let s: Settings = serde_json::from_str(r#"{"tone":"dark"}"#).unwrap();
         assert_eq!(s.tone, ToneFilter::Dark);
         assert_eq!(s.change_time, "08:00");
+        // Settings saved before the switch existed keep the schedule on.
+        assert!(s.schedule_enabled);
+        let off: Settings = serde_json::from_str(r#"{"schedule_enabled":false}"#).unwrap();
+        assert!(!off.schedule_enabled);
     }
 }

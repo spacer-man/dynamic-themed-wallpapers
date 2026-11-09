@@ -117,8 +117,11 @@ async fn save_settings(
     let e = engine.inner().clone();
     blocking(move || {
         let saved = e.save_settings(settings)?;
-        app.state::<wallpaper_bridge::Bridge>()
-            .schedule(&saved.change_time, saved.wifi_only)?;
+        app.state::<wallpaper_bridge::Bridge>().schedule(
+            &saved.change_time,
+            saved.wifi_only,
+            saved.schedule_enabled,
+        )?;
         Ok(saved)
     })
     .await
@@ -377,9 +380,11 @@ pub fn run() {
             let engine = worker::engine_at(&data, &cache);
             // Make sure the daily alarm exists (first launch, or after the OS cleared it). Idempotent.
             if let Ok(s) = engine.settings() {
-                let _ = app
-                    .state::<wallpaper_bridge::Bridge>()
-                    .schedule(&s.change_time, s.wifi_only);
+                let _ = app.state::<wallpaper_bridge::Bridge>().schedule(
+                    &s.change_time,
+                    s.wifi_only,
+                    s.schedule_enabled,
+                );
             }
             app.manage(engine);
             Ok(())
