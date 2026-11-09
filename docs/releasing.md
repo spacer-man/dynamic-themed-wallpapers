@@ -56,8 +56,11 @@ git tag v0.1.0
 git push origin v0.1.0
 ```
 
-The workflow builds, verifies the signature, attaches the APK and its SHA-256 file, and generates release notes from
-the commits.
+Or, without a terminal (e.g. from a phone): Releases → Draft a new release → choose a new tag `vX.Y.Z` on `main` →
+Generate release notes → Publish.
+
+The workflow builds, verifies the signature and attaches the APK and its SHA-256 file. A tag pushed from a terminal gets
+a release with notes generated from the commits; a release published on the website keeps its own notes.
 
 ## Checklist
 
