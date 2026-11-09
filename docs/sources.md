@@ -77,8 +77,8 @@ the wallpaper uses the smallest step that still covers the screen after cropping
 - The search API names no author and no licence: a candidate reads "Wallpaper: Wallhaven #<id>" and the licence field
   says "No licence stated". Favourites feed the curation score.
 - **Only the chosen photo is enriched.** When a photo becomes the wallpaper, one request to `GET wallhaven.cc/api/v1/w/<id>`
-  (`Source::enrich_chosen`) gives `data.uploader.username` (author; credit line "Wallhaven: <uploader>") and, if it is a
-  URL, `data.source` (becomes the photo's link). If the request fails the plain caption stays; the licence stays
+  (`Source::enrich_chosen`) gives `data.uploader.username` (author; credit line "Wallhaven: <uploader>"), linked to their profile;
+  `data.source` is ignored: it is free text, often a dead or unrelated site. If the request fails the plain caption stays; the licence stays
   "No licence stated".
 
 ## Pexels (user's key)
