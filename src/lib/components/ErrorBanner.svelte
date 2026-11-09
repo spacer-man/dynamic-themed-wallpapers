@@ -4,6 +4,10 @@
   import { sourceName } from '../sources';
 </script>
 
+{#snippet dismiss()}
+  <button onclick={() => (app.error = null)}>{t('error.dismiss')}</button>
+{/snippet}
+
 {#if app.error}
   <div class="banner" class:wide={app.fallbackOptions.length > 0} role="alert">
     <span>
@@ -21,9 +25,11 @@
             {t('error.try', { source: sourceName(o.source) })}
           </button>
         {/each}
+        {@render dismiss()}
       </div>
+    {:else}
+      {@render dismiss()}
     {/if}
-    <button onclick={() => (app.error = null)}>{t('error.dismiss')}</button>
   </div>
 {/if}
 

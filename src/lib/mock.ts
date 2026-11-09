@@ -197,6 +197,8 @@ let db = load();
     }
   }
 }
+// Dev/screenshot helper: ?notify=off starts with notifications denied (the Schedule screen shows the allow button).
+let notifyAllowed = typeof location === 'undefined' || new URLSearchParams(location.search).get('notify') !== 'off';
 const save = () => {
   try {
     localStorage.setItem(KEY, JSON.stringify(db));
@@ -446,8 +448,9 @@ export async function mockCall(cmd: string, a: Record<string, unknown>): Promise
     case 'launch_route':
       return null;
     case 'notifications_enabled':
+      return notifyAllowed;
     case 'request_notifications':
-      return true;
+      return (notifyAllowed = true);
     case 'schedule_status':
       return { last_at: 0, outcome: '', message: '', next_at: 0 };
     case 'open_battery_settings':

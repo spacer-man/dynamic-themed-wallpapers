@@ -59,6 +59,9 @@
 
   a {
     color: var(--accent);
+    display: inline-block;
+    padding: var(--space-3) 0;
+    margin: calc(-1 * var(--space-3)) 0;
   }
 
   .apply {
