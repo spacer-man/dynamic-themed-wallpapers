@@ -195,3 +195,19 @@ board. **Owner's choice:** read the board from the embed-widget endpoint `widget
 first and keep the RSS as the fallback; the saved board identity stays the `.rss` address (no migration). Risks: the endpoint
 is unofficial and may change; the JSON shape is written from memory and tested only on a fixture (Pinterest was not contacted),
 so a different real shape would show up as "no usable pins" and silently use the RSS.
+
+## Q28. Daily change: alarm chain instead of a 24 h periodic job
+
+Real device (Xiaomi), Nov 2026: the daily change did not happen and nothing was shown. Cause: `schedule()` ran at every launch and
+settings save with `ExistingPeriodicWorkPolicy.UPDATE`, which keeps the original enqueue time but applies the new initial delay, so
+the first run drifted by hours; periodic work is also very inexact in Doze. **Applied:** `setAndAllowWhileIdle` alarm (no
+exact-alarm permission, so it can be a few minutes to hours late in deep Doze, which is acceptable for a wallpaper) → `DailyAlarmReceiver`
+→ expedited one-time work (falls back to ordinary work when the quota is used up; Android 11 and older show a low-importance
+"Changing the wallpaper" notification while it runs) → re-arm. The daily change no longer requires a healthy battery (prefetch still
+does). `BootReceiver` (the only exported receiver, system broadcasts only) re-arms after reboot, update and clock changes.
+The old `daily-wallpaper` periodic work is cancelled once. Diagnostics (last attempt, message, next alarm) are shown on the
+Schedule screen, with a "Battery settings" button (MIUI autostart list on Xiaomi, else the app details page) because some OEMs
+kill alarms and background work of apps without autostart. Not verified: nothing here was compiled or run on a device. A planned
+time more than 10 minutes in the past is shown as "the phone did not start it". The outcome "skipped, no network" is shown as
+"waiting to start" (the work simply waits for the network constraint). Relies on work-runtime merging the FOREGROUND_SERVICE
+permission into the manifest (needed by expedited work on Android 11 and older).
