@@ -22,6 +22,6 @@
   .chip.ok {
     border-color: transparent;
     background: var(--accent-soft);
-    color: var(--accent);
+    color: var(--text);
   }
 </style>

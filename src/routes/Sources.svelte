@@ -188,6 +188,6 @@
   .inuse {
     font-size: var(--fs-sm);
     font-weight: 600;
-    color: var(--accent);
+    color: var(--text);
   }
 </style>

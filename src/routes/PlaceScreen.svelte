@@ -309,7 +309,7 @@
     padding: 2px 10px;
     border-radius: 999px;
     background: var(--accent-soft);
-    color: var(--accent);
+    color: var(--text);
     font-weight: 600;
   }
 
@@ -321,7 +321,7 @@
     min-height: 52px;
     border-radius: 999px;
     border: 1px solid var(--hairline);
-    background: var(--surface);
+    background: var(--bg);
     color: var(--muted);
   }
 
@@ -336,6 +336,7 @@
     outline: 0;
     background: none;
     color: var(--text);
+    text-overflow: ellipsis;
   }
 
   .saved {
@@ -365,7 +366,7 @@
     align-items: center;
     gap: var(--space-2);
     min-height: 48px;
-    padding: 0 var(--space-2);
+    padding: var(--space-2);
     border: 0;
     background: none;
     text-align: left;

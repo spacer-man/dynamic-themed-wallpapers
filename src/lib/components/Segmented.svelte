@@ -40,7 +40,7 @@
   }
 
   button {
-    min-height: 40px;
+    min-height: 44px;
     border: 0;
     border-radius: 999px;
     background: transparent;
