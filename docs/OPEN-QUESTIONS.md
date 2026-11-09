@@ -102,14 +102,16 @@ to EncryptedSharedPreferences through a small Kotlin plugin if you want it.
 ## Q14. Pixabay is mostly useless without full API access
 
 Without approval, Pixabay only gives `largeImageURL` (≤ 1280 px), too small for a phone (plan: no upscaling, drop what
-does not cover the screen). **Applied:** honest sizes, so most hits are dropped. **Recommended:** keep, and say so in the
-UI text; or apply for full access.
+does not cover the screen). **Resolved with the owner:** keep Pixabay. The Sources screen now says that a standard key gives
+photos of at most 1280 px (few cover a phone) and full API access gives originals. A general setting "Allow photos smaller
+than the screen (upscaled)" (`allow_upscale`, off by default) accepts photos down to 70% of the needed size for all sources.
 
 ## Q15. Wallhaven has no author or licence in search results
 
-**Applied:** caption "Wallpaper: Wallhaven #<id>", licence "No licence stated". The per-wallpaper endpoint has the
-uploader but costs one request per photo. Wallpapers there are often third-party art; General + SFW only limits that.
-**Recommended:** keep, or drop Wallhaven if unlicensed content is a concern.
+Search results carry no author; the per-wallpaper endpoint has the uploader but costs one request per photo.
+**Resolved with the owner:** only for the photo that becomes the wallpaper, that endpoint is called: the uploader is the
+author ("Wallhaven: <uploader>") and `source`, if a URL, is the link. On failure the old caption stays. The licence stays
+"No licence stated" (wallpapers there are often third-party art; General + SFW only limits that).
 
 ## Q16. Openverse licence filter and thumbnail size
 

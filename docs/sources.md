@@ -74,8 +74,12 @@ the wallpaper uses the smallest step that still covers the screen after cropping
 
 - `GET wallhaven.cc/api/v1/search?q=<text>&categories=100&purity=100&atleast=WxH&ratios=portrait&sorting=random&seed=…`
 - **SFW and General only, as constants.** `purity=100` is never configurable; no Anime, no People.
-- The search API names no author and no licence: the caption reads "Wallpaper: Wallhaven #<id>" and the licence field
+- The search API names no author and no licence: a candidate reads "Wallpaper: Wallhaven #<id>" and the licence field
   says "No licence stated". Favourites feed the curation score.
+- **Only the chosen photo is enriched.** When a photo becomes the wallpaper, one request to `GET wallhaven.cc/api/v1/w/<id>`
+  (`Source::enrich_chosen`) gives `data.uploader.username` (author; credit line "Wallhaven: <uploader>") and, if it is a
+  URL, `data.source` (becomes the photo's link). If the request fails the plain caption stays; the licence stays
+  "No licence stated".
 
 ## Pexels (user's key)
 
@@ -89,7 +93,16 @@ the wallpaper uses the smallest step that still covers the screen after cropping
 - Pixabay forbids long-term hotlinking; photos are downloaded and cached. The key travels in the URL, so errors are
   scrubbed of it.
 - `imageURL` / `fullHDURL` exist only with Pixabay full API access; otherwise the best file is `largeImageURL`
-  (≤ 1280 px), which cannot cover a typical phone screen, so most hits are dropped. Likes feed the curation score.
+  (≤ 1280 px), which cannot cover a typical phone screen, so most hits are dropped. The Sources screen says so. Turning on
+  "Allow photos smaller than the screen" (below) keeps more of them. Likes feed the curation score.
+
+## Photos smaller than the screen
+
+Setting `allow_upscale` (default off, old settings read as off; one toggle on the Sources screen, for all sources). Off:
+a photo must cover the screen (Unsplash and Commons allow the usual ~20%). On: the best rendition must reach
+`UPSCALE_MIN_FRACTION` = 0.7 of the needed size, the same fraction is sent to the APIs that filter by size (Pixabay
+`min_width`/`min_height`, Wallhaven `atleast`), `score::check` allows an upscale up to 1/0.7, and the renderer enlarges
+the crop to the screen size. The threshold lives in `CandidateRequest::min_fraction` and `score::max_upscale`.
 
 ## Pinterest (public boards, no key)
 

@@ -26,6 +26,8 @@ export interface Settings {
   /** Vertical centre of the caption, percent of the screen height (3 top … 97 bottom). */
   caption_y: number;
   caption_align: CaptionAlign;
+  /** Accept photos down to ~70% of the screen size and upscale them. */
+  allow_upscale: boolean;
 }
 
 export interface GeoPoint {
