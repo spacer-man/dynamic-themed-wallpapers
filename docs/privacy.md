@@ -32,6 +32,12 @@ identifiers, no account data.
 If the scheduled change cannot get a photo, the app can show a local notification offering another source. Nothing is sent
 anywhere for this. Android 13+ asks for the notification permission when you set the schedule time, never at app start.
 
+## Permissions for the schedule
+
+`RECEIVE_BOOT_COMPLETED` lets the app set its daily alarm again after the phone restarts. No exact-alarm permission is used. The
+app keeps the time of the last daily change, its result and the next planned time in its private storage to show them on the
+Schedule screen; nothing is sent anywhere. The "Battery settings" button only opens a system settings screen.
+
 ## What stays on the device
 
 - history of shown photos, likes and skips;

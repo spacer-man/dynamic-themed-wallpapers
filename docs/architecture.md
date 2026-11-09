@@ -12,13 +12,24 @@
 │     store/                           │
 │                                      │
 └─ Android (gen/android) ──────────────┘
-      DailyWallpaperWorker (Kotlin, WorkManager)
+      DailyAlarmReceiver (AlarmManager) → DailyWallpaperWorker (Kotlin, WorkManager)
         → System.loadLibrary(...) → JNI function in the same .so → crates/core
         → Canvas: place caption → WallpaperManager.setBitmap(FLAG_SYSTEM|FLAG_LOCK)
 ```
 
 The daily wallpaper change **never starts a WebView**. Tauri already builds `src-tauri` as a `cdylib`; we export a
 plain `extern "system"` JNI function from it that does not touch the Tauri runtime, and the WorkManager job calls it.
+
+### Scheduling (Android)
+
+The daily change is a self-rescheduling chain, not a periodic job: `Scheduler.schedule` stores the time and the Wi-Fi rule in
+SharedPreferences and arms `AlarmManager.setAndAllowWhileIdle(RTC_WAKEUP)` for the next local HH:MM. The alarm starts
+`DailyAlarmReceiver`, which arms the next alarm first and then enqueues an expedited one-time `DailyWallpaperWorker` (network
+constraint only; `UNMETERED` with Wi-Fi only). The worker re-arms after its final result. `BootReceiver` re-arms after reboot,
+app update and clock / time zone changes (and runs a missed change once after a reboot). `schedule` is idempotent: the same
+time with an alarm still pending changes nothing, so app starts and settings saves never move the next run. The prefetch job
+stays periodic (`KEEP`). The last daily attempt (queued / changed / retry / failed + message) and the next planned time are kept in
+SharedPreferences and shown on the Schedule screen (`scheduleStatus` plugin command). See OPEN-QUESTIONS Q28.
 
 Split of responsibilities when setting a wallpaper:
 
