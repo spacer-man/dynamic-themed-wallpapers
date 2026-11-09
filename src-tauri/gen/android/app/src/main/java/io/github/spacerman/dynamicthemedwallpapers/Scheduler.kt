@@ -114,13 +114,18 @@ object Scheduler {
     private fun alarmIntent(context: Context) =
         Intent(context, DailyAlarmReceiver::class.java).setAction(ACTION_DAILY)
 
+    /**
+     * A PendingIntent outlives the alarm that fired it, so its existence alone is not enough: the
+     * planned time must still be ahead too.
+     */
     private fun alarmPending(context: Context): Boolean =
-        PendingIntent.getBroadcast(
-            context,
-            ALARM_REQUEST,
-            alarmIntent(context),
-            PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
-        ) != null
+        prefs(context).getLong(K_NEXT, 0) > System.currentTimeMillis() &&
+            PendingIntent.getBroadcast(
+                context,
+                ALARM_REQUEST,
+                alarmIntent(context),
+                PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE,
+            ) != null
 
     /**
      * Sets the alarm for the next local HH:MM that is at least `afterMs` away. Does nothing when no
