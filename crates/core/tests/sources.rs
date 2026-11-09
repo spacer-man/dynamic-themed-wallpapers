@@ -358,7 +358,7 @@ fn openverse_place_uses_the_label_as_query() {
 }
 
 #[test]
-fn wallhaven_chosen_photo_gets_uploader_and_source_link() {
+fn wallhaven_chosen_photo_gets_its_uploader() {
     let http = FixtureHttp::new()
         .route(
             &["wallhaven.cc/api/v1/search"],
@@ -376,7 +376,8 @@ fn wallhaven_chosen_photo_gets_uploader_and_source_link() {
         c.author_url.as_deref(),
         Some("https://wallhaven.cc/user/fogwalker")
     );
-    assert_eq!(c.page_url, "https://example.org/original-art");
+    // The uploader's free-text source link is not trusted: the link stays on Wallhaven.
+    assert_eq!(c.page_url, got[0].page_url);
     assert_eq!(c.credit_line(), "Wallhaven: fogwalker");
     assert_eq!(c.license.short_name, "No licence stated");
     assert!(http.requests()[1].ends_with("/api/v1/w/abc123"));

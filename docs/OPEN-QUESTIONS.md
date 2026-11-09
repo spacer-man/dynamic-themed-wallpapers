@@ -110,7 +110,7 @@ than the screen (upscaled)" (`allow_upscale`, off by default) accepts photos dow
 
 Search results carry no author; the per-wallpaper endpoint has the uploader but costs one request per photo.
 **Resolved with the owner:** only for the photo that becomes the wallpaper, that endpoint is called: the uploader is the
-author ("Wallhaven: <uploader>") and `source`, if a URL, is the link. On failure the old caption stays. The licence stays
+author ("Wallhaven: <uploader>"); the link stays on the Wallhaven page (the uploader's free-text `source` is often a dead or unrelated site). On failure the old caption stays. The licence stays
 "No licence stated" (wallpapers there are often third-party art; General + SFW only limits that).
 
 ## Q16. Openverse licence filter and thumbnail size

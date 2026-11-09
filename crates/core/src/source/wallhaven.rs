@@ -4,7 +4,7 @@
 //! The search API names neither author nor licence (the uploader is only in the per-wallpaper
 //! endpoint), so candidates credit Wallhaven itself and say that no licence is stated. Only
 //! the photo that becomes the wallpaper costs one extra request ([`Source::enrich_chosen`]) to
-//! learn its uploader and source link. Likes on Wallhaven (favourites) feed the curation score.
+//! learn its uploader. Likes on Wallhaven (favourites) feed the curation score.
 
 use serde::Deserialize;
 
@@ -99,15 +99,8 @@ impl Source for WallhavenSource<'_> {
             out.author = truncate(&name, 80);
             changed = true;
         }
-        if let Some(src) = detail
-            .data
-            .source
-            .map(|s| s.trim().to_owned())
-            .filter(|s| s.starts_with("https://") || s.starts_with("http://"))
-        {
-            out.page_url = src;
-            changed = true;
-        }
+        // `source` is whatever the uploader typed, often a dead or unrelated site: the link stays on
+        // the Wallhaven page, the uploader's profile is the author link.
         Ok(changed.then_some(out))
     }
 }
@@ -120,7 +113,6 @@ struct DetailResponse {
 #[derive(Deserialize)]
 struct Detail {
     uploader: Option<Uploader>,
-    source: Option<String>,
 }
 
 #[derive(Deserialize)]
