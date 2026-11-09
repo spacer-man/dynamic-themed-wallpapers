@@ -1,12 +1,17 @@
 name: Release
 
-# Push a tag such as v0.1.0, or publish a release with a new tag on GitHub, to build a signed APK and
-# attach it to that release. The signing key lives only in repository secrets; see docs/releasing.md.
+# Three ways to release, all building a signed APK and attaching it to the release:
+#  - push a tag such as v0.1.0;
+#  - publish a release with a new tag on GitHub;
+#  - run this workflow by hand (Actions -> Release -> Run workflow) on main: the tag is v<version from
+#    tauri.conf.json>, created here together with the release.
+# The signing key lives only in repository secrets; see docs/releasing.md.
 on:
   push:
     tags: ["v*"]
   release:
     types: [published]
+  workflow_dispatch:
 
 # Publishing a release on the website also pushes its tag, so both events can fire: keep one run.
 concurrency:
@@ -28,6 +33,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Release tag
+        run: |
+          version="$(grep -m1 '"version"' src-tauri/tauri.conf.json | sed -E 's/.*"([0-9][^"]*)".*/\1/')"
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            if [ "$GITHUB_REF_NAME" != main ]; then echo "::error::run it on main"; exit 1; fi
+            echo "TAG=v$version" >> "$GITHUB_ENV"
+          else
+            echo "TAG=$GITHUB_REF_NAME" >> "$GITHUB_ENV"
+          fi
+
       - name: The signing secrets must exist
         env:
           KEYSTORE_B64: ${{ secrets.DTW_KEYSTORE_BASE64 }}
@@ -38,11 +53,16 @@ jobs:
           echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
           echo "DTW_KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
-      - name: The tag must match the app version
+      - name: The tag must match the app version and must not be released yet
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           version="$(grep -m1 '"version"' src-tauri/tauri.conf.json | sed -E 's/.*"([0-9][^"]*)".*/\1/')"
-          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::tag $GITHUB_REF_NAME does not match version $version in tauri.conf.json"; exit 1
+          if [ "v$version" != "$TAG" ]; then
+            echo "::error::tag $TAG does not match version $version in tauri.conf.json"; exit 1
+          fi
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] && git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            echo "::error::$TAG already exists: bump the version first"; exit 1
           fi
 
       - uses: actions/setup-java@v5
@@ -73,7 +93,7 @@ jobs:
         run: |
           apk="$(ls src-tauri/gen/android/app/build/outputs/apk/universal/release/*.apk | head -n1)"
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs "$apk"
-          out="dynamic-themed-wallpapers-${GITHUB_REF_NAME}-arm64.apk"
+          out="dynamic-themed-wallpapers-${TAG}-arm64.apk"
           cp "$apk" "$out"
           sha256sum "$out" > "$out.sha256"
           cat "$out.sha256"
@@ -83,10 +103,16 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+          if gh release view "$TAG" >/dev/null 2>&1; then
             # Created on the website: add the files to it.
-            gh release upload "$GITHUB_REF_NAME" "$APK" "$APK.sha256" --clobber
+            gh release upload "$TAG" "$APK" "$APK.sha256" --clobber
+            # A draft left over from the website gets published (no-op for a published one).
+            gh release edit "$TAG" --draft=false
+          elif [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            # Run by hand: the tag is created here, on the commit that was built.
+            gh release create "$TAG" "$APK" "$APK.sha256" \
+              --title "$TAG" --generate-notes --target "$GITHUB_SHA"
           else
-            gh release create "$GITHUB_REF_NAME" "$APK" "$APK.sha256" \
-              --title "$GITHUB_REF_NAME" --generate-notes --verify-tag
+            gh release create "$TAG" "$APK" "$APK.sha256" \
+              --title "$TAG" --generate-notes --verify-tag
           fi
