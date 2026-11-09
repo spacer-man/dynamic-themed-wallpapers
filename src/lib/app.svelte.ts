@@ -1,8 +1,9 @@
 // Application state. One instance, shared by all screens.
 
 import { api, inTauri } from './api';
+import { BackStack, EXIT_WINDOW_MS, type BackResult } from './back';
 import { paletteIsDark } from './color';
-import { i18n } from './i18n.svelte';
+import { i18n, t } from './i18n.svelte';
 import { AppError, subjectName } from './types';
 import type {
   CacheInfo,
@@ -48,6 +49,10 @@ class App {
   ready = $state(false);
   /** Theme for the current photo; recomputed when the dark/light variant flips. */
   theme = $state<Theme | null>(null);
+  /** Short transient bubble above the tab bar (the "press back again" hint); null when hidden. */
+  toast = $state<string | null>(null);
+  private toastTimer: ReturnType<typeof setTimeout> | undefined;
+  private backStack = new BackStack({ route: () => this.route, go: (r) => this.go(r) });
 
   /** The subject photos are searched for, if one is selected. */
   get activeSubject(): Subject | null {
@@ -139,6 +144,35 @@ class App {
       void this.loadNotifications();
     }
     if (route === 'sources' || route === 'place') void this.loadSources();
+  }
+
+  /** Register an open layer (sheet, edit mode) that back closes first. Returns the unregister function. */
+  pushLayer(close: () => void): () => void {
+    return this.backStack.push(close);
+  }
+
+  /** One step back inside the app; false when already at the home screen with nothing open. */
+  back(): boolean {
+    return this.backStack.back();
+  }
+
+  /** The system back gesture: step back, or ask for a second press / exit at the home screen. */
+  pressBack(): BackResult {
+    const r = this.backStack.press();
+    if (r === 'confirm') this.showToast(t('back.again'), EXIT_WINDOW_MS);
+    else this.hideToast();
+    return r;
+  }
+
+  showToast(text: string, ms: number) {
+    clearTimeout(this.toastTimer);
+    this.toast = text;
+    this.toastTimer = setTimeout(() => (this.toast = null), ms);
+  }
+
+  hideToast() {
+    clearTimeout(this.toastTimer);
+    this.toast = null;
   }
 
   /** Re-theme after the dark/light variant changed (cheap: palette in, colours out). */

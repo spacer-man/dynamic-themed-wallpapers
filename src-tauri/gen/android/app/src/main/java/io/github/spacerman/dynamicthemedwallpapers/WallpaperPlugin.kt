@@ -7,6 +7,9 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.webkit.WebView
+import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import app.tauri.annotation.Command
 import app.tauri.annotation.InvokeArg
 import app.tauri.annotation.TauriPlugin
@@ -33,6 +36,36 @@ class ScheduleArgs {
 /** Thin Tauri wrapper; the work is in [WallpaperSetter] so the background worker can share it. */
 @TauriPlugin
 class WallpaperPlugin(private val activity: Activity) : Plugin(activity) {
+    /**
+     * System back (button, gesture, Android 13+ predictive back) always lands here and is asked of
+     * the UI, which owns the back stack (sheets, sub-screens, tabs, "press again to exit"):
+     * `window.__dtwBack()` returns "handled" or "exit". No answer (page not loaded yet, script
+     * error, function missing) means the app behaves like a plain app and closes.
+     * finish() rather than moveTaskToBack: the user asked to close the app. The daily change runs
+     * in WorkManager / AlarmManager and does not depend on the activity, so nothing is lost.
+     */
+    private var backCallback: OnBackPressedCallback? = null
+
+    override fun load(webView: WebView) {
+        super.load(webView)
+        val owner = activity as? ComponentActivity ?: return
+        activity.runOnUiThread {
+            // The WebView can be recreated; replace the callback so it never talks to a dead one.
+            backCallback?.remove()
+            val callback = object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    webView.evaluateJavascript(
+                        "(typeof window.__dtwBack === 'function' ? window.__dtwBack() : 'exit')"
+                    ) { result ->
+                        if (result != "\"handled\"") activity.finish()
+                    }
+                }
+            }
+            backCallback = callback
+            owner.onBackPressedDispatcher.addCallback(owner, callback)
+        }
+    }
+
     @Command
     fun canSetWallpaper(invoke: Invoke) {
         invoke.resolve(JSObject().put("allowed", WallpaperSetter.canSet(activity)))

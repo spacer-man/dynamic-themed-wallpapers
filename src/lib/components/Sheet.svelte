@@ -1,12 +1,14 @@
 <script lang="ts">
-  import type { Snippet } from 'svelte';
+  import { onMount, type Snippet } from 'svelte';
+  import { app } from '../app.svelte';
   import { t } from '../i18n.svelte';
   import Icon from './Icon.svelte';
 
   let { title, onclose, children }: { title: string; onclose: () => void; children: Snippet } = $props();
-</script>
 
-<svelte:window onkeydown={(e) => e.key === 'Escape' && onclose()} />
+  // Back (gesture, Escape in a browser) closes the sheet.
+  onMount(() => app.pushLayer(() => onclose()));
+</script>
 
 <div class="backdrop" role="presentation" onclick={onclose}></div>
 <div class="sheet" role="dialog" aria-modal="true" aria-label={title}>
