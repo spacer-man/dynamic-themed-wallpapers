@@ -4,6 +4,8 @@
     <uses-permission android:name="android.permission.SET_WALLPAPER" />
     <!-- Android 13+: asked from the UI when the user sets up the schedule, never at app start. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Alarms are lost on reboot; the daily change is armed again when the phone has started. -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
@@ -31,6 +33,23 @@
         <receiver
             android:name=".FallbackReceiver"
             android:exported="false" />
+
+        <!-- The daily alarm (set by this app only). -->
+        <receiver
+            android:name=".DailyAlarmReceiver"
+            android:exported="false" />
+
+        <!-- System broadcasts only (reboot, app update, clock or time zone change): the alarm is set again. -->
+        <receiver
+            android:name=".BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+                <action android:name="android.intent.action.TIME_SET" />
+            </intent-filter>
+        </receiver>
 
         <provider
           android:name="androidx.core.content.FileProvider"
