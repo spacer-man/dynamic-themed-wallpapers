@@ -21,6 +21,10 @@ This is the complete list. Adding an endpoint requires updating this file in the
 | `widgets.pinterest.com` | **only if you pick Pinterest** (adding a board, refreshing) | the board's user and name in the path (`/v3/pidgets/boards/<user>/<board>/pins/`), read first; the RSS address above is the fallback |
 | `i.pinimg.com` | **only if you pick Pinterest** | the pin images: the first 64 KB of each (to read its size), then the previews and the chosen photo |
 
+The History screen shows each past photo's preview straight from its source's image host, so opening History contacts
+those hosts again. The app's content security policy (`src-tauri/tauri.conf.json`, `img-src`) lists them; a new source
+whose previews live elsewhere must be added there too, or its History thumbnails stay blank.
+
 Only the source you picked is contacted. "Check all" in the source settings sends one small request to each source that
 is usable (no request to a key source without a key). Free-text subjects are sent to the chosen source as search words.
 

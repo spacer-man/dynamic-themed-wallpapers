@@ -20,7 +20,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' data: https://thumb.wikimedia.org https://upload.wikimedia.org https://images.unsplash.com; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost"
+      "csp": "default-src 'self'; img-src 'self' data: https://thumb.wikimedia.org https://upload.wikimedia.org https://images.unsplash.com https://images.pexels.com https://cdn.pixabay.com https://pixabay.com https://th.wallhaven.cc https://w.wallhaven.cc https://api.openverse.org https://i.pinimg.com; style-src 'self' 'unsafe-inline'; connect-src ipc: http://ipc.localhost"
     }
   },
   "bundle": {
