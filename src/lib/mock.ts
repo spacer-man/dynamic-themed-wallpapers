@@ -447,6 +447,10 @@ export async function mockCall(cmd: string, a: Record<string, unknown>): Promise
     case 'notifications_enabled':
     case 'request_notifications':
       return true;
+    case 'schedule_status':
+      return { last_at: 0, outcome: '', message: '', next_at: 0 };
+    case 'open_battery_settings':
+      return null;
     case 'current_wallpaper':
       return wallpaper(Boolean(a.dark));
     case 'change_now': {

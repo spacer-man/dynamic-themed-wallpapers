@@ -51,8 +51,8 @@ impl Bridge {
         Ok(())
     }
 
-    /// (Re)schedule the daily change and the prefetch job. Safe to call repeatedly:
-    /// WorkManager replaces the existing jobs.
+    /// Arm the daily alarm and the prefetch job. Idempotent: with an unchanged time and network
+    /// rule and an alarm already pending, the next run does not move.
     #[cfg(target_os = "android")]
     pub fn schedule(&self, time: &str, wifi_only: bool) -> Result<(), Error> {
         self.0
@@ -66,6 +66,33 @@ impl Bridge {
 
     #[cfg(not(target_os = "android"))]
     pub fn schedule(&self, _time: &str, _wifi_only: bool) -> Result<(), Error> {
+        Ok(())
+    }
+
+    /// What the last daily run did and when the next one is planned. Empty outside Android.
+    #[cfg(target_os = "android")]
+    pub fn schedule_status(&self) -> Result<ScheduleStatus, Error> {
+        self.0
+            .run_mobile_plugin::<ScheduleStatus>("scheduleStatus", NoArgs {})
+            .map_err(|e| Error::Config(format!("reading the schedule state failed: {e}")))
+    }
+
+    #[cfg(not(target_os = "android"))]
+    pub fn schedule_status(&self) -> Result<ScheduleStatus, Error> {
+        Ok(ScheduleStatus::default())
+    }
+
+    /// Open the system screen where autostart / battery limits of this app can be lifted.
+    #[cfg(target_os = "android")]
+    pub fn open_battery_settings(&self) -> Result<(), Error> {
+        self.0
+            .run_mobile_plugin::<serde_json::Value>("openBatterySettings", NoArgs {})
+            .map(|_| ())
+            .map_err(|e| Error::Config(format!("opening the battery settings failed: {e}")))
+    }
+
+    #[cfg(not(target_os = "android"))]
+    pub fn open_battery_settings(&self) -> Result<(), Error> {
         Ok(())
     }
 
@@ -112,6 +139,20 @@ impl Bridge {
     pub fn request_notifications(&self) -> Result<bool, Error> {
         Ok(true)
     }
+}
+
+/// Diagnostics of the daily change. Times are epoch milliseconds, 0 = never. `outcome` is
+/// "queued", "changed", "retry" or "failed" (empty before the first run).
+#[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct ScheduleStatus {
+    #[serde(default, alias = "lastAt")]
+    pub last_at: i64,
+    #[serde(default)]
+    pub outcome: String,
+    #[serde(default)]
+    pub message: String,
+    #[serde(default, alias = "nextAt")]
+    pub next_at: i64,
 }
 
 #[cfg(target_os = "android")]

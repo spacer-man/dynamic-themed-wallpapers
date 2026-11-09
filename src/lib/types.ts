@@ -138,6 +138,15 @@ export interface CacheInfo {
   ready: number;
 }
 
+/** What the last daily run did and when the next is planned (epoch milliseconds, 0 = never). */
+export interface ScheduleStatus {
+  last_at: number;
+  /** "queued", "changed", "retry" or "failed"; empty before the first run. */
+  outcome: string;
+  message: string;
+  next_at: number;
+}
+
 export interface ScreenSize {
   width: number;
   height: number;

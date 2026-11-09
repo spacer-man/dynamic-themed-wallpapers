@@ -9,6 +9,7 @@ import type {
   HistoryEntry,
   Place,
   PlaceHit,
+  ScheduleStatus,
   ScreenSize,
   Settings,
   SourceId,
@@ -72,6 +73,10 @@ export const api = {
   notificationsEnabled: () => call<boolean>('notifications_enabled'),
   /** Shows the system permission dialog on Android 13+; resolves with the state before the answer. */
   requestNotifications: () => call<boolean>('request_notifications'),
+  /** Last daily run and next planned time. Empty outside Android. */
+  scheduleStatus: () => call<ScheduleStatus>('schedule_status'),
+  /** Opens the system screen where autostart / battery limits of the app can be lifted. */
+  openBatterySettings: () => call<void>('open_battery_settings'),
   applyFromHistory: (historyId: number, systemDark: boolean) =>
     call<Wallpaper | null>('apply_from_history', { historyId, systemDark, screen: screenSize() }),
   reapplyWallpaper: () => call<boolean>('reapply_wallpaper'),

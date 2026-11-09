@@ -349,6 +349,20 @@ async fn request_notifications(app: tauri::AppHandle) -> CmdResult<bool> {
 }
 
 #[tauri::command]
+async fn schedule_status(app: tauri::AppHandle) -> CmdResult<wallpaper_bridge::ScheduleStatus> {
+    blocking(move || app.state::<wallpaper_bridge::Bridge>().schedule_status()).await
+}
+
+#[tauri::command]
+async fn open_battery_settings(app: tauri::AppHandle) -> CmdResult<()> {
+    blocking(move || {
+        app.state::<wallpaper_bridge::Bridge>()
+            .open_battery_settings()
+    })
+    .await
+}
+
+#[tauri::command]
 fn theme_for(engine: tauri::State<'_, Engine>, palette: Vec<Swatch>, dark: bool) -> Theme {
     engine.theme_for(&palette, dark)
 }
@@ -361,7 +375,7 @@ pub fn run() {
             let data = app.path().app_data_dir()?;
             let cache = app.path().app_cache_dir()?;
             let engine = worker::engine_at(&data, &cache);
-            // Make sure the daily job exists (first launch, or after the OS cleared it).
+            // Make sure the daily alarm exists (first launch, or after the OS cleared it). Idempotent.
             if let Ok(s) = engine.settings() {
                 let _ = app
                     .state::<wallpaper_bridge::Bridge>()
@@ -397,6 +411,8 @@ pub fn run() {
             launch_route,
             notifications_enabled,
             request_notifications,
+            schedule_status,
+            open_battery_settings,
             theme_for,
         ])
         .run(tauri::generate_context!())
