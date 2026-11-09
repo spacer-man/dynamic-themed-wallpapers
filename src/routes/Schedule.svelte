@@ -1,12 +1,28 @@
 <script lang="ts">
   import { app } from '../lib/app.svelte';
-  import { t } from '../lib/i18n.svelte';
+  import { t, i18n } from '../lib/i18n.svelte';
   import Toggle from '../lib/components/Toggle.svelte';
+  import { api } from '../lib/api';
+  import { describeSchedule } from '../lib/schedule-status';
+  import type { ScheduleStatus } from '../lib/types';
 
   const s = $derived(app.settings);
   const cache = $derived(app.cache);
   let confirmForget = $state(false);
   let confirmTimer: ReturnType<typeof setTimeout> | undefined;
+
+  let status = $state<ScheduleStatus | null>(null);
+  const info = $derived(status ? describeSchedule(status, Date.now()) : null);
+
+  $effect(() => {
+    void s?.change_time; // look again after the time is changed
+    api
+      .scheduleStatus()
+      .then((v) => (status = v))
+      .catch(() => (status = null));
+  });
+
+  const when = (ms: number) => new Date(ms).toLocaleString(i18n.lang, { dateStyle: 'short', timeStyle: 'short' });
 
   const mb = (bytes: number) => `${Math.round(bytes / 1024 / 1024)} MB`;
   const usedPct = $derived(cache && cache.budget_bytes > 0 ? Math.min(100, (cache.bytes / cache.budget_bytes) * 100) : 0);
@@ -45,12 +61,30 @@
         onchange={(v) => app.saveSettings({ wifi_only: v })}
       />
       <span class="hint">{t('schedule.android')}</span>
+      {#if info}
+        {#if info.last}
+          <span class="hint">
+            {t('schedule.status.last', { when: when(info.last.at), result: t(`schedule.status.${info.last.outcome}`) })}
+          </span>
+          {#if info.last.message}<span class="hint">{info.last.message}</span>{/if}
+        {:else}
+          <span class="hint">{t('schedule.status.never')}</span>
+        {/if}
+        {#if info.next}
+          <span class="hint">{t(info.overdue ? 'schedule.status.overdue' : 'schedule.status.next', { when: when(info.next) })}</span>
+        {/if}
+      {/if}
       {#if app.notifications}
         <span class="hint">{t('schedule.notify.on')}</span>
       {:else}
         <span class="hint">{t('schedule.notify.off')}</span>
         <button class="btn" onclick={() => app.askNotifications()}>{t('schedule.notify.allow')}</button>
       {/if}
+    </div>
+
+    <div class="card">
+      <span class="hint">{t('schedule.battery.hint')}</span>
+      <button class="btn" onclick={() => void api.openBatterySettings().catch(() => {})}>{t('schedule.battery.open')}</button>
     </div>
 
     <div class="card">
